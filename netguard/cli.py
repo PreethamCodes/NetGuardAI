@@ -77,6 +77,10 @@ def _parser() -> argparse.ArgumentParser:
     from netguard.ml.cli import register as register_ml  # Phase 4/5 sub-command
 
     register_ml(sub)
+
+    from netguard.backend.cli import register as register_backend  # Phase 6 sub-command
+
+    register_backend(sub)
     return p
 
 
@@ -196,8 +200,14 @@ def cmd_train(args: argparse.Namespace) -> int:
     return handler(args)
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    from netguard.backend.cli import cmd_serve as handler
+
+    return handler(args)
+
+
 _COMMANDS = {"validate": cmd_validate, "list": cmd_list, "plan": cmd_plan, "run": cmd_run, "topology": cmd_topology,
-             "experiment": cmd_experiment, "dataset": cmd_dataset, "prepare": cmd_prepare, "train": cmd_train}
+             "experiment": cmd_experiment, "dataset": cmd_dataset, "prepare": cmd_prepare, "train": cmd_train, "serve": cmd_serve}
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:

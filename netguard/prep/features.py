@@ -135,13 +135,18 @@ def causal_congestion(
 
 def build_features(
     obs: pd.DataFrame, *, flows: Optional[pd.DataFrame], anchor_wall: float,
-    util_pct: float, queue_ms: float, loss_pct: float, min_consecutive: int,
+    util_pct: float, queue_ms: float, loss_pct: float, min_consecutive: int, syn: Optional[pd.Series] = None,
 ) -> pd.DataFrame:
-    """Feature table (+ IDs and label columns) for one run, one row per second, ordered by second."""
+    """Feature table (+ IDs and label columns) for one run, one row per second, ordered by second.
+
+    ``syn`` (SYN packets of flows started per second) can be given directly, e.g. by a live monitor that has no
+    flow table; otherwise it is derived from ``flows``.
+    """
     if obs["experiment_id"].nunique() != 1:
         raise ValueError("build_features works on exactly one experiment")
     obs = obs.sort_values("second").reset_index(drop=True)
-    syn = syn_per_second(flows, len(obs), anchor_wall) if flows is not None else None
+    if syn is None and flows is not None:
+        syn = syn_per_second(flows, len(obs), anchor_wall)
     base = add_base_signals(obs, syn)
     cols: Dict[str, pd.Series] = {}
     cols.update(trailing_features(base, BASE_SIGNALS))
