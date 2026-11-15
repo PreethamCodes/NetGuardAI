@@ -1,0 +1,22 @@
+name: ramp
+description: Aggregate UDP load rises step by step and crosses the bottleneck capacity at ~60 s (congestion onset)
+duration_s: 300
+seed: 42
+# No background traffic here: the offered load is entirely defined by the ramp,
+# so the planned onset time is not blurred by other flows.
+components:
+  - name: load-ramp
+    pattern: RAMP
+    tool: iperf3
+    protocol: udp
+    src: left
+    dst: right
+    clients: 4                # flows sharing each step's load equally
+    packet_size: 1200
+    options:
+      # Loads are fractions of the bottleneck capacity (aggregate over all clients).
+      start_load: 0.1         # at t = 0
+      onset_load: 1.05        # reached at onset_s -> queue builds, loss starts
+      max_load: 1.3           # the ramp continues at the same slope up to this level, then holds
+      onset_s: 60
+      step_s: 5

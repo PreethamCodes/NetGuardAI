@@ -1,0 +1,37 @@
+# Settings of the traffic tools and safety limits. Scenario-specific parameters
+# (rates, clients, durations, ...) live in configs/scenarios/*.yaml.
+
+iperf3:
+  base_port: 5201            # each iperf3 event gets its own server port starting here
+  connect_timeout_ms: 5000
+
+http:
+  port: 8000
+  payload_kb: 64             # size of the object served at /payload
+  timeout_s: 5
+
+dns:
+  port: 53
+  timeout_s: 1
+  domains: [example.test, www.example.test, mail.example.test, api.example.test]
+
+ping:
+  timeout_s: 1               # per-probe wait (ping -W)
+
+hping3:
+  dst_port: 5001             # UDP destination port used by hping3 streams
+
+executor:
+  server_start_lead_s: 0.5   # head start given to servers before clients connect
+  grace_s: 10                # how long a client may overrun its planned end before it is killed
+
+# Hard caps that protect the VM CPU and keep experiments sane. A plan that
+# exceeds them is rejected before anything runs.
+limits:
+  max_rate_mbps: 100
+  max_request_rate: 500
+  max_clients: 64
+  max_connections: 32
+  max_events: 2000
+  max_packet_size: 1472      # payload bytes; avoids IP fragmentation at MTU 1500
+  max_hping3_pps: 20000

@@ -1,0 +1,26 @@
+name: random
+description: Random flows (rate, duration, protocol, peer) with a reproducible seed, plus light DNS background
+duration_s: 300
+seed: 1234                    # same seed -> identical plan
+components:
+  - name: random-flows
+    pattern: RANDOM
+    tool: iperf3
+    src: left
+    dst: right
+    clients: 3                # independent flow slots
+    packet_size: 1200
+    options:
+      rate_range_mbps: [0.2, 3.0]
+      duration_range_s: [5, 25]
+      gap_range_s: [0, 10]
+      protocols: [tcp, udp]
+
+  - name: dns-lookups
+    pattern: NORMAL
+    tool: dns
+    src: left
+    dst: right
+    request_rate: 4
+    clients: 2
+    options: {start_jitter_s: 5}

@@ -1,0 +1,22 @@
+# Link parameters, applied with Linux tc (netem for delay/loss, tbf for rate + queue).
+# Each parameter set is applied to BOTH directions of the link (both ends are shaped),
+# so delay_ms is one-way: a 20 ms bottleneck gives ~40 ms RTT.
+
+bottleneck:                # the s1 <-> s2 link
+  bandwidth_mbps: 10
+  delay_ms: 20
+  loss_pct: 0              # random loss, percent
+  jitter_ms: 0
+  queue_packets: 50        # drop-tail queue of the tbf, in MTU-sized packets (~60 ms at 10 Mbit/s)
+  mtu: 1500
+
+access:                    # host <-> switch links; must be faster than the bottleneck
+  bandwidth_mbps: 100
+  delay_ms: 0
+  loss_pct: 0
+  jitter_ms: 0
+  queue_packets: 1000
+  mtu: 1500
+
+# Turn off TSO/GSO/GRO on shaped interfaces (best effort, needs ethtool).
+disable_offload: true

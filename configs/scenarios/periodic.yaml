@@ -1,0 +1,49 @@
+name: periodic
+description: Recurring UDP transfers every 30 s on top of light background traffic
+duration_s: 300
+seed: 42
+components:
+  # ---- light background traffic ----
+  - name: tcp-bulk
+    pattern: NORMAL
+    tool: iperf3
+    protocol: tcp
+    src: left
+    dst: right
+    rate_mbps: 0.8            # per client
+    clients: 2
+    options: {start_jitter_s: 5}
+
+  - name: http-browse
+    pattern: NORMAL
+    tool: http
+    src: left
+    dst: right
+    request_rate: 1.0
+    clients: 2
+    connections: 2
+    options: {start_jitter_s: 5}
+
+  - name: dns-lookups
+    pattern: NORMAL
+    tool: dns
+    src: left
+    dst: right
+    request_rate: 4
+    clients: 2
+    options: {start_jitter_s: 5}
+
+  # ---- recurring transfers: 10 s on every 30 s, starting at t=15 s ----
+  - name: periodic-transfer
+    pattern: PERIODIC
+    tool: iperf3
+    protocol: udp
+    src: left
+    dst: right
+    rate_mbps: 2.0            # per client
+    packet_size: 1200
+    clients: 2
+    start_s: 15
+    options:
+      period_s: 30
+      on_duration_s: 10

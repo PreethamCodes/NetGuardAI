@@ -1,0 +1,55 @@
+name: normal
+description: Baseline behaviour - mixed TCP, UDP, HTTP, DNS and ping at low-to-medium load
+duration_s: 300
+seed: 42
+components:
+  # ---- background "normal" mix: low-to-medium load (~35% of a 10 Mbit/s bottleneck) ----
+  - name: tcp-bulk
+    pattern: NORMAL
+    tool: iperf3
+    protocol: tcp
+    src: left
+    dst: right
+    rate_mbps: 0.8            # per client
+    clients: 2
+    options: {start_jitter_s: 10}
+
+  - name: udp-media
+    pattern: NORMAL
+    tool: iperf3
+    protocol: udp
+    src: left
+    dst: right
+    rate_mbps: 0.5            # per client
+    packet_size: 1200
+    clients: 2
+    options: {start_jitter_s: 10}
+
+  - name: http-browse
+    pattern: NORMAL
+    tool: http
+    src: left
+    dst: right
+    request_rate: 1.0         # requests/s per client, one new TCP connection each
+    clients: 2
+    connections: 2            # client threads per client
+    options: {start_jitter_s: 10}
+
+  - name: dns-lookups
+    pattern: NORMAL
+    tool: dns
+    src: left
+    dst: right
+    request_rate: 4           # queries/s per client
+    clients: 2
+    options: {start_jitter_s: 10}
+
+  - name: ping-probe
+    pattern: NORMAL
+    tool: ping
+    src: left
+    dst: right
+    request_rate: 2           # echo requests/s per client
+    packet_size: 56
+    clients: 1
+    options: {start_jitter_s: 5}

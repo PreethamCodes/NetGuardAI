@@ -1,0 +1,47 @@
+name: udp_flood_hping3
+description: Controlled UDP flood generated with hping3 (rate-limited, bounded packet count) between Mininet hosts only
+duration_s: 300
+seed: 42
+components:
+  # ---- light background traffic ----
+  - name: tcp-bulk
+    pattern: NORMAL
+    tool: iperf3
+    protocol: tcp
+    src: left
+    dst: right
+    rate_mbps: 0.8            # per client
+    clients: 2
+    options: {start_jitter_s: 5}
+
+  - name: http-browse
+    pattern: NORMAL
+    tool: http
+    src: left
+    dst: right
+    request_rate: 1.0
+    clients: 2
+    connections: 2
+    options: {start_jitter_s: 5}
+
+  - name: dns-lookups
+    pattern: NORMAL
+    tool: dns
+    src: left
+    dst: right
+    request_rate: 4
+    clients: 2
+    options: {start_jitter_s: 5}
+
+  # ---- hping3 UDP stream: 15 Mbit/s with 512-byte payloads (~3.7k packets/s) ----
+  - name: udp-flood-hping3
+    pattern: UDP_FLOOD
+    tool: hping3
+    protocol: udp
+    src: h2
+    dst: h6
+    rate_mbps: 15
+    packet_size: 512
+    clients: 1
+    start_s: 120
+    duration_s: 60

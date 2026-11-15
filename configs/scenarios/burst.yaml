@@ -1,0 +1,51 @@
+name: burst
+description: Sudden UDP bursts on top of light background traffic, each followed by a return to base load
+duration_s: 300
+seed: 42
+components:
+  # ---- light background traffic ----
+  - name: tcp-bulk
+    pattern: NORMAL
+    tool: iperf3
+    protocol: tcp
+    src: left
+    dst: right
+    rate_mbps: 0.8            # per client
+    clients: 2
+    options: {start_jitter_s: 5}
+
+  - name: http-browse
+    pattern: NORMAL
+    tool: http
+    src: left
+    dst: right
+    request_rate: 1.0
+    clients: 2
+    connections: 2
+    options: {start_jitter_s: 5}
+
+  - name: dns-lookups
+    pattern: NORMAL
+    tool: dns
+    src: left
+    dst: right
+    request_rate: 4
+    clients: 2
+    options: {start_jitter_s: 5}
+
+  # ---- bursts: 4 bursts of 15 s, one every 60 s, first at t=60 s ----
+  - name: traffic-burst
+    pattern: BURST
+    tool: iperf3
+    protocol: udp
+    src: left
+    dst: right
+    rate_mbps: 2.5            # per client during a burst (2 clients -> 5 Mbit/s extra)
+    packet_size: 1200
+    clients: 2
+    start_s: 60               # first burst
+    burst_interval_s: 60      # start-to-start spacing of bursts
+    options:
+      base_rate_mbps: 0.5     # per client, between bursts
+      burst_duration_s: 15
+      burst_count: 4

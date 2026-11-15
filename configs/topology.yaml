@@ -1,0 +1,11 @@
+# Dumbbell topology structure.
+#
+#   h1..hN  --- s1 ===== bottleneck ===== s2 --- h(N+1)..h(2N)
+#
+# Hosts are named h1..h(2N); the left side gets h1..hN, the right side the rest.
+hosts_per_side: 4          # 3 or 4
+subnet: 10.0.0.0/24        # private range; host hK gets <network>.K
+left_switch: s1
+right_switch: s2
+# OVS fail mode. "standalone" = learning switch, no SDN controller required.
+fail_mode: standalone

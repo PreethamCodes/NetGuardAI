@@ -1,0 +1,47 @@
+name: udp_flood
+description: Controlled high-rate UDP flood (iperf3) between two Mininet hosts only, over light background traffic
+duration_s: 300
+seed: 42
+components:
+  # ---- light background traffic ----
+  - name: tcp-bulk
+    pattern: NORMAL
+    tool: iperf3
+    protocol: tcp
+    src: left
+    dst: right
+    rate_mbps: 0.8            # per client
+    clients: 2
+    options: {start_jitter_s: 5}
+
+  - name: http-browse
+    pattern: NORMAL
+    tool: http
+    src: left
+    dst: right
+    request_rate: 1.0
+    clients: 2
+    connections: 2
+    options: {start_jitter_s: 5}
+
+  - name: dns-lookups
+    pattern: NORMAL
+    tool: dns
+    src: left
+    dst: right
+    request_rate: 4
+    clients: 2
+    options: {start_jitter_s: 5}
+
+  # ---- the flood: 20 Mbit/s of UDP (2x the bottleneck) from h1 to h5 for 60 s ----
+  - name: udp-flood
+    pattern: UDP_FLOOD
+    tool: iperf3
+    protocol: udp
+    src: h1
+    dst: h5
+    rate_mbps: 20
+    packet_size: 1200
+    clients: 1
+    start_s: 120
+    duration_s: 60

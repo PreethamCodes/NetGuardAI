@@ -1,0 +1,6 @@
+# Python dependencies (pinned to the versions used during development).
+# Mininet, Open vSwitch, iperf3, hping3 and tshark are installed with apt, not pip
+# (see README). Python >= 3.10 is required by these pins (Ubuntu 22.04 or newer).
+PyYAML==6.0.3      # YAML configuration files
+scapy==2.8.0       # crafts/parses DNS packets in the DNS traffic worker
+pytest==9.2.0      # unit and integration tests

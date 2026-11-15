@@ -1,0 +1,60 @@
+name: flash_crowd
+description: Sudden but legitimate surge of many TCP clients (HTTP and bulk TCP) on top of light background traffic
+duration_s: 300
+seed: 42
+components:
+  # ---- light background traffic ----
+  - name: tcp-bulk
+    pattern: NORMAL
+    tool: iperf3
+    protocol: tcp
+    src: left
+    dst: right
+    rate_mbps: 0.8            # per client
+    clients: 2
+    options: {start_jitter_s: 5}
+
+  - name: http-browse
+    pattern: NORMAL
+    tool: http
+    src: left
+    dst: right
+    request_rate: 1.0
+    clients: 2
+    connections: 2
+    options: {start_jitter_s: 5}
+
+  - name: dns-lookups
+    pattern: NORMAL
+    tool: dns
+    src: left
+    dst: right
+    request_rate: 4
+    clients: 2
+    options: {start_jitter_s: 5}
+
+  # ---- the crowd: arrives within 3 s at t=100 s, stays 60 s ----
+  - name: crowd-http
+    pattern: FLASH_CROWD
+    tool: http
+    src: left
+    dst: right
+    request_rate: 0.8         # requests/s per client (new TCP connection each)
+    clients: 12
+    connections: 2
+    start_s: 100
+    duration_s: 60
+    options: {spread_s: 3}
+
+  - name: crowd-tcp
+    pattern: FLASH_CROWD
+    tool: iperf3
+    protocol: tcp
+    src: left
+    dst: right
+    rate_mbps: 0.3            # per client, total over its parallel connections
+    clients: 8
+    connections: 3
+    start_s: 100
+    duration_s: 60
+    options: {spread_s: 3}
