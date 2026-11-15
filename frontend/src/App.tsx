@@ -4,7 +4,7 @@ import { AnomalyChart, CongestionChart, FlowsChart, LatencyChart, ProtocolChart,
 import { ModelPerformance } from "./components/ModelPerformance";
 import { Card, Empty, Kpi, Pill } from "./components/ui";
 import { SEVERITY_TONE, TONE, condition, num, pct, toPoint } from "./lib";
-import type { AlertItem, ModelsResponse, MonitorRecord, RunInfo, Timeline } from "./types";
+import type { AlertItem, LiveSession, ModelsResponse, MonitorRecord, RunInfo, Timeline } from "./types";
 
 type Mode = "replay" | "live";
 type Tab = "monitor" | "performance";
@@ -22,6 +22,9 @@ export default function App() {
   const [advice, setAdvice] = useState<Record<string, string>>({});
   const [liveRecords, setLiveRecords] = useState<MonitorRecord[]>([]);
   const [liveConnected, setLiveConnected] = useState(false);
+  const [sessions, setSessions] = useState<LiveSession[]>([]);
+  const [sessionId, setSessionId] = useState<string>(""); // "" = real-time stream, otherwise a stored live session
+  const [stored, setStored] = useState<Timeline | null>(null);
   const [error, setError] = useState<string>("");
 
   // ---- initial data
@@ -43,11 +46,29 @@ export default function App() {
     api.timeline(runId).then(setTimeline).catch((e: Error) => setError(e.message));
   }, [runId]);
 
-  // ---- playback of the recorded run (historical)
-  const total = timeline?.records.length ?? 0;
+  // ---- stored live sessions (past live demos)
+  useEffect(() => {
+    if (mode !== "live") return;
+    api.liveStreams().then(setSessions).catch(() => undefined);
+  }, [mode, liveRecords.length === 0]);
+  useEffect(() => {
+    if (mode !== "live" || !sessionId) {
+      setStored(null);
+      return;
+    }
+    setPlaying(false);
+    setCursor(0);
+    api.liveSession(sessionId).then(setStored).catch((e: Error) => setError(e.message));
+  }, [mode, sessionId]);
+
+  // a recorded run, or a stored live session played back; both are playable timelines
+  const playable: Timeline | null = mode === "replay" ? timeline : sessionId ? stored : null;
+
+  // ---- playback (historical)
+  const total = playable?.records.length ?? 0;
   const tick = useRef<number | undefined>(undefined);
   useEffect(() => {
-    if (!playing || mode !== "replay") return;
+    if (!playing || !playable) return;
     tick.current = window.setInterval(() => {
       setCursor((c) => {
         if (c + 1 >= total) {
@@ -58,7 +79,7 @@ export default function App() {
       });
     }, 1000 / speed);
     return () => window.clearInterval(tick.current);
-  }, [playing, speed, total, mode]);
+  }, [playing, speed, total, playable]);
 
   // ---- live feed
   useEffect(() => {
@@ -68,16 +89,16 @@ export default function App() {
   }, [mode]);
 
   const records: MonitorRecord[] = useMemo(
-    () => (mode === "replay" ? (timeline?.records.slice(0, cursor + 1) ?? []) : liveRecords),
-    [mode, timeline, cursor, liveRecords],
+    () => (playable ? playable.records.slice(0, cursor + 1) : liveRecords),
+    [playable, cursor, liveRecords],
   );
   const points = useMemo(() => records.map(toPoint), [records]);
   const current = records[records.length - 1];
   const cond = condition(current);
   const alerts: AlertItem[] = useMemo(() => {
-    if (mode === "replay") return (timeline?.alerts ?? []).filter((a) => a.second <= cursor).slice(-12).reverse();
+    if (playable) return playable.alerts.filter((a) => a.second <= cursor).slice(-12).reverse();
     return liveRecords.flatMap((r) => (r as MonitorRecord & { alerts?: AlertItem[] }).alerts ?? []).slice(-12).reverse();
-  }, [mode, timeline, cursor, liveRecords]);
+  }, [playable, cursor, liveRecords]);
   const run = runs.find((r) => r.experiment_id === runId);
   const pred = current?.predictions;
   const gt = current?.ground_truth;
@@ -105,10 +126,12 @@ export default function App() {
             ))}
           </nav>
         </div>
-        <div className={`px-4 py-1.5 text-center text-xs font-medium ${mode === "replay" ? "bg-amber-400 text-amber-950" : "bg-emerald-500 text-emerald-950"}`}>
+        <div className={`px-4 py-1.5 text-center text-xs font-medium ${mode === "live" && !sessionId ? "bg-emerald-500 text-emerald-950" : "bg-amber-400 text-amber-950"}`}>
           {mode === "replay"
             ? "HISTORICAL DATA: replay of a recorded Mininet experiment run. Nothing on this screen is live."
-            : `LIVE MONITORING: samples posted to the backend as they happen (${liveConnected ? "connected" : "not connected"}).`}
+            : sessionId
+              ? "RECORDED LIVE SESSION: a past live demo stored by the backend, played back. It is not happening now."
+              : `LIVE MONITORING: real measurements from a running Mininet network, as they happen (${liveConnected ? "connected" : "not connected"}).`}
         </div>
       </header>
 
@@ -119,17 +142,27 @@ export default function App() {
 
         {tab === "monitor" && (
           <>
-            {mode === "replay" && (
-              <Card title="Recorded run">
+            {(mode === "replay" || mode === "live") && (
+              <Card title={mode === "replay" ? "Recorded run" : "Live session"}>
                 <div className="flex flex-wrap items-center gap-3 text-sm">
-                  <select value={runId} onChange={(e) => setRunId(e.target.value)} className="rounded-md border border-slate-300 bg-white px-2 py-1.5">
+                  {mode === "live" && (
+                    <select value={sessionId} onChange={(e) => setSessionId(e.target.value)} className="rounded-md border border-slate-300 bg-white px-2 py-1.5">
+                      <option value="">● Real-time stream (now)</option>
+                      {sessions.map((x) => (
+                        <option key={x.stream_id} value={x.stream_id}>
+                          Past session: {x.stream_id} ({x.seconds} s)
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {mode === "replay" && <select value={runId} onChange={(e) => setRunId(e.target.value)} className="rounded-md border border-slate-300 bg-white px-2 py-1.5">
                     {runs.map((r) => (
                       <option key={r.experiment_id} value={r.experiment_id}>
                         {r.scenario_label} · run {r.repetition} · {r.split}
                       </option>
                     ))}
-                  </select>
-                  <button onClick={() => setPlaying((p) => !p)} disabled={!total} className="rounded-md bg-blue-600 px-3 py-1.5 font-medium text-white disabled:opacity-40">
+                  </select>}
+                  {playable && <><button onClick={() => setPlaying((p) => !p)} disabled={!total} className="rounded-md bg-blue-600 px-3 py-1.5 font-medium text-white disabled:opacity-40">
                     {playing ? "Pause" : cursor + 1 >= total ? "Replay" : "Play"}
                   </button>
                   {cursor + 1 >= total && total > 0 && !playing && (
@@ -142,9 +175,10 @@ export default function App() {
                     </select>
                   </label>
                   <input type="range" min={0} max={Math.max(total - 1, 0)} value={cursor} onChange={(e) => { setPlaying(false); setCursor(Number(e.target.value)); }} className="min-w-48 flex-1" />
-                  <span className="tabular-nums text-slate-500">second {cursor} / {Math.max(total - 1, 0)}</span>
+                  <span className="tabular-nums text-slate-500">second {cursor} / {Math.max(total - 1, 0)}</span></>}
+                  {mode === "live" && !sessionId && <span className="text-slate-500">{liveRecords.length} live second(s) received</span>}
                 </div>
-                {run && (
+                {mode === "replay" && run && (
                   <p className={`mt-2 text-xs ${run.seen_by_models ? "text-amber-700" : "text-emerald-700"}`}>
                     {run.seen_by_models
                       ? `This ${run.split} run was used to train or tune the models, so their predictions on it are optimistic. Choose a "test" run for an unseen example.`
@@ -154,9 +188,11 @@ export default function App() {
               </Card>
             )}
 
-            {mode === "live" && records.length === 0 && (
+            {mode === "live" && !sessionId && records.length === 0 && (
               <Empty>
-                No live samples received yet. Connect a monitor that sends one JSON sample per second to <code>POST /api/ingest</code>. The dashboard shows nothing until real samples arrive.
+                No live samples yet. Start a real live run in a terminal (it streams here second by second):
+                <br /><code>sudo .venv/bin/python -m netguard live ramp --duration 150</code><br />
+                The first 30 s only collect history, so predictions start after about half a minute.
               </Empty>
             )}
 

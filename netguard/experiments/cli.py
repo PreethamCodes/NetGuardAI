@@ -39,6 +39,8 @@ def register(sub: Any) -> None:
     sp = esub.add_parser("report", help="write the validation report (results/validation_report.md)")
     sp.add_argument("config", nargs="?", default=str(DEFAULT_CAMPAIGN))
 
+    register_live(sub)
+
     ds = sub.add_parser("dataset", help="Phase 2: build the consolidated dataset")
     dsub = ds.add_subparsers(dest="ds_command", required=True)
     sp = dsub.add_parser("build", help="concatenate all successful experiments into processed/dataset.parquet")
@@ -112,3 +114,66 @@ def cmd_dataset(args: argparse.Namespace) -> int:
     cfg, _ = _load(args)
     print(f"wrote {build_dataset(cfg.output.data_dir)}")
     return 0
+
+
+# ---------------------------------------------------------------------------------------- live demo
+def register_live(sub: Any) -> None:
+    sp = sub.add_parser("live", help="Run a real Mininet scenario and stream its per-second measurements to the backend")
+    sp.add_argument("scenario", help="scenario name, e.g. ramp, udp_flood, flash_crowd, degraded, normal")
+    sp.add_argument("--duration", type=float, default=150.0, help="seconds to run (the scenario's own start times must fit)")
+    sp.add_argument("--seed", type=int, default=7, help="traffic seed (different from the 42-44 of the dataset)")
+    sp.add_argument("--backend", default="http://127.0.0.1:8000", help="URL of the running backend")
+    sp.add_argument("--stream-id", default=None, help="name of this live session (default: live-<scenario>-<time>)")
+
+
+def cmd_live(args: argparse.Namespace) -> int:
+    import time
+    import urllib.request
+
+    from netguard.experiments.calibration import effective_labeling
+    from netguard.experiments.collectors.livepackets import LivePacketCollector
+    from netguard.experiments.config import ExperimentConfig, load_experiment_config, load_labeling
+    from netguard.experiments.livefeed import LiveFeeder
+    from netguard.experiments.orchestrator import ExperimentOrchestrator, RunSpec, _Runtime
+    from netguard.utils.system import is_linux, is_root
+
+    if not is_linux() or not is_root():
+        raise NetGuardError("the live demo needs Linux and root (run with sudo inside the Ubuntu VM)")
+    try:
+        urllib.request.urlopen(args.backend.rstrip("/") + "/api/health", timeout=3).read()
+    except OSError as exc:
+        raise NetGuardError(f"backend not reachable at {args.backend} ({exc}); start it with: python -m netguard serve") from exc
+
+    main_cfg = load_experiment_config(DEFAULT_CAMPAIGN)
+    live_dir = main_cfg.output.data_dir / "live"
+    cfg = ExperimentConfig.from_mapping({
+        "name": "live-demo", "scenarios": [args.scenario], "repetitions": 1, "seeds": [args.seed],
+        "duration_s": args.duration, "timeline": {"pre_roll_s": 5, "tail_s": 7},  # tail >= feeder delay + margin
+        "output": {"data_dir": str(live_dir), "results_dir": str(live_dir / "results")},
+    })
+    stream_id = args.stream_id or f"live-{args.scenario}-{time.strftime('%H%M%S')}"
+    labeling = effective_labeling(load_labeling(args.config_dir), main_cfg.output.data_dir)
+
+    def factory(timeline, collectors, net, env, capture_dev):  # noqa: ANN001
+        span = cfg.timeline.pre_roll_s + timeline.duration_s + cfg.timeline.tail_s + 5
+        packets = LivePacketCollector(capture_dev, timeline.anchor_wall, env.traffic.http.port, span)
+        packets.start()
+        collectors["live_packets"] = packets
+        feeder = LiveFeeder(timeline, collectors, backend_url=args.backend, stream_id=stream_id,
+                            capacity_mbps=env.links.bottleneck.bandwidth_mbps, probe_interval_s=cfg.probe.interval_s)
+        feeder.start()
+        print(f"live session {stream_id!r}: streaming to {args.backend} (open the dashboard's Live tab)")
+        return feeder
+
+    orch = ExperimentOrchestrator(cfg, load_environment(args.config_dir), labeling, Path(args.config_dir),
+                                  _Runtime(live_factory=factory))
+    meta = orch.run_experiment(RunSpec(args.scenario, 1, args.seed))
+    print(f"experiment {meta.experiment_id}: {meta.status}")
+    live = meta.checks.get("live", {})
+    print(f"samples posted {live.get('posted')}, failed {live.get('failed')}")
+    for col, stats in meta.checks.get("live_vs_offline", {}).get("columns", {}).items():
+        if stats.get("n"):
+            print(f"  live vs offline {col:<22} mean|diff| {stats['mean_abs_diff']:.3f}  corr {stats['correlation']}")
+    for e in meta.errors[:3]:
+        print("ERROR:", e[:300])
+    return 0 if meta.status == "success" else 1

@@ -27,33 +27,37 @@ BUFFER_S = 45  # >= longest lag (30 s) + window
 
 
 class IngestSample(BaseModel):
-    """One second of measurements, named like the Phase 2 dataset columns."""
+    """One second of measurements, named like the Phase 2 dataset columns.
+
+    A metric that could not be measured is sent as ``null`` (never 0): the backend then withholds the predictions
+    that depend on it instead of guessing.
+    """
 
     stream_id: str = Field("live-1", max_length=64)
     timestamp_s: float
-    throughput_mbps: float
-    fwd_pps: float
-    utilisation_pct: float
-    rtt_mean_ms: float
-    jitter_ms: float
-    probe_loss_pct: float
-    loss_pct: float
-    fwd_queue_backlog_bytes: float
-    rev_queue_backlog_bytes: float = 0.0
-    queue_delay_ms: float
-    fwd_queue_drops_per_s: float = 0.0
-    rev_queue_drops_per_s: float = 0.0
-    active_connections: float
-    tcp_retransmissions: float
-    nf_active_flows: float
-    nf_new_flows: float
-    tshark_pkts: float
-    tshark_tcp_pkts: float
-    tshark_udp_pkts: float
-    tshark_icmp_pkts: float
-    tshark_dns_pkts: float
-    tshark_http_pkts: float
-    syn_packets: Optional[float] = Field(None, description="SYN packets of flows that started in this second")
+    throughput_mbps: Optional[float] = None
+    fwd_pps: Optional[float] = None
+    utilisation_pct: Optional[float] = None
+    rtt_mean_ms: Optional[float] = None
+    jitter_ms: Optional[float] = None
+    probe_loss_pct: Optional[float] = None
+    loss_pct: Optional[float] = None
+    fwd_queue_backlog_bytes: Optional[float] = None
+    rev_queue_backlog_bytes: Optional[float] = 0.0
+    queue_delay_ms: Optional[float] = None
+    fwd_queue_drops_per_s: Optional[float] = 0.0
+    rev_queue_drops_per_s: Optional[float] = 0.0
+    active_connections: Optional[float] = None
+    tcp_retransmissions: Optional[float] = None
+    nf_active_flows: Optional[float] = None
+    nf_new_flows: Optional[float] = None
+    tshark_pkts: Optional[float] = None
+    tshark_tcp_pkts: Optional[float] = None
+    tshark_udp_pkts: Optional[float] = None
+    tshark_icmp_pkts: Optional[float] = None
+    tshark_dns_pkts: Optional[float] = None
+    tshark_http_pkts: Optional[float] = None
+    syn_packets: Optional[float] = Field(None, description="SYN packets seen in this second")
     cpu_percent: Optional[float] = None
     ram_percent: Optional[float] = None
 
@@ -77,7 +81,7 @@ class LiveStreams:
         self._last_ts[sid] = sample.timestamp_s
         second = self._counter.get(sid, 0)
         self._counter[sid] = second + 1
-        row = sample.model_dump(exclude={"syn_packets", "stream_id"})
+        row = {k: (np.nan if v is None else v) for k, v in sample.model_dump(exclude={"syn_packets", "stream_id"}).items()}
         row.update({"experiment_id": sid, "second": second})
         self._rows.setdefault(sid, deque(maxlen=BUFFER_S)).append(row)
         self._syn.setdefault(sid, deque(maxlen=BUFFER_S)).append(sample.syn_packets)

@@ -99,3 +99,11 @@ export interface ModelsResponse {
   evaluation: Json;
   note: string;
 }
+
+export interface LiveSession {
+  stream_id: string;
+  seconds: number;
+  first_timestamp_s: number | null;
+  last_timestamp_s: number | null;
+  source: "live";
+}

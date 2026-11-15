@@ -111,6 +111,16 @@ class Database:
                                    metrics=metrics, predictions=predictions))
             s.commit()
 
+    def live_streams(self) -> List[Dict[str, Any]]:
+        """Stored live sessions (one per stream id): how many seconds, when they started and ended."""
+        from sqlalchemy import func
+
+        with self.session() as s:
+            rows = s.execute(select(MonitoringRecord.stream_id, func.count(), func.min(MonitoringRecord.timestamp_s),
+                                    func.max(MonitoringRecord.timestamp_s)).group_by(MonitoringRecord.stream_id)).all()
+        return sorted(({"stream_id": r[0], "seconds": r[1], "first_timestamp_s": r[2], "last_timestamp_s": r[3],
+                        "source": "live"} for r in rows), key=lambda d: d["last_timestamp_s"] or 0, reverse=True)
+
     def live_records(self, stream_id: Optional[str] = None, limit: int = 300) -> List[Dict[str, Any]]:
         with self.session() as s:
             q = select(MonitoringRecord).order_by(MonitoringRecord.id.desc()).limit(limit)

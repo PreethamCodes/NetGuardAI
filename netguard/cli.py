@@ -182,6 +182,12 @@ def cmd_experiment(args: argparse.Namespace) -> int:
     return handler(args)
 
 
+def cmd_live(args: argparse.Namespace) -> int:
+    from netguard.experiments.cli import cmd_live as handler
+
+    return handler(args)
+
+
 def cmd_dataset(args: argparse.Namespace) -> int:
     from netguard.experiments.cli import cmd_dataset as handler
 
@@ -207,7 +213,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 
 _COMMANDS = {"validate": cmd_validate, "list": cmd_list, "plan": cmd_plan, "run": cmd_run, "topology": cmd_topology,
-             "experiment": cmd_experiment, "dataset": cmd_dataset, "prepare": cmd_prepare, "train": cmd_train, "serve": cmd_serve}
+             "experiment": cmd_experiment, "dataset": cmd_dataset, "prepare": cmd_prepare, "train": cmd_train, "serve": cmd_serve, "live": cmd_live}
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:

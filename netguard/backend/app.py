@@ -167,6 +167,11 @@ def create_app(data_dir: Optional[Path] = None, models_dir: Optional[Path] = Non
         await hub.broadcast({"type": "record", **record})
         return record
 
+    @app.get("/api/live/streams")
+    def live_streams() -> List[Dict[str, Any]]:
+        """Stored live sessions (kept in SQLite), so past live demos can be viewed again."""
+        return db.live_streams()
+
     @app.get("/api/live/records")
     def live_records(stream_id: Optional[str] = None, limit: int = Query(300, le=2000)) -> Dict[str, Any]:
         recs = db.live_records(stream_id, limit)

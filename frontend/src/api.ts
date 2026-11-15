@@ -1,4 +1,4 @@
-import type { ModelsResponse, RunInfo, Timeline, MonitorRecord } from "./types";
+import type { AlertItem, LiveSession, ModelsResponse, RunInfo, Timeline, MonitorRecord } from "./types";
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(path);
@@ -12,6 +12,17 @@ export const api = {
   models: () => get<ModelsResponse>("/api/models"),
   recommendations: () => get<Record<string, string>>("/api/recommendations"),
   liveRecords: () => get<{ records: MonitorRecord[]; note: string }>("/api/live/records?limit=300"),
+  liveStreams: () => get<LiveSession[]>("/api/live/streams"),
+  /** A stored live session, loaded as a playable timeline (records + alerts). */
+  liveSession: async (id: string): Promise<Timeline> => {
+    const q = encodeURIComponent(id);
+    const recs = await get<{ records: MonitorRecord[] }>(`/api/live/records?stream_id=${q}&limit=2000`);
+    const alerts = await get<Array<AlertItem & { id: number }>>(`/api/alerts?source=live&stream_id=${q}&limit=1000`);
+    return {
+      experiment_id: id, scenario: "live session", split: "live", repetition: 0, historical: false, seen_by_models: false,
+      records: recs.records, alerts: [...alerts].reverse(),
+    };
+  },
 };
 
 /** WebSocket to the live feed; messages are pushed by the backend whenever a live sample is ingested. */

@@ -142,8 +142,11 @@ def test_live_ingest_rejects_old_timestamps_bad_payloads_and_restarts_after_a_ga
     assert client.post("/api/ingest", json=sample_payload(row, "live-b", 3_000_000.0)).status_code == 409  # not after
     assert client.post("/api/ingest", json=sample_payload(row, "live-b", 2_999_999.0)).status_code == 409
     bad = sample_payload(row, "live-b", 3_000_001.0)
-    del bad["rtt_mean_ms"]
+    bad["rtt_mean_ms"] = "not a number"
     assert client.post("/api/ingest", json=bad).status_code == 422
+    no_time = sample_payload(row, "live-b", 3_000_001.0)
+    del no_time["timestamp_s"]
+    assert client.post("/api/ingest", json=no_time).status_code == 422
     after_gap = client.post("/api/ingest", json=sample_payload(row, "live-b", 3_000_100.0)).json()
     assert after_gap["second"] == 0  # a gap breaks the history: the stream starts over, nothing is interpolated
 
@@ -162,3 +165,30 @@ def test_live_anomalies_raise_stored_alerts_and_are_broadcast(env):
     alerts = client.get("/api/alerts", params={"source": "live", "stream_id": "live-c"}).json()
     assert alerts and all(a["source"] == "live" and not a["historical"] for a in alerts)
     assert resp["predictions"]["available"] and resp["predictions"]["anomaly"]["flagged"]
+
+
+def test_nulls_are_accepted_as_unmeasured_and_never_become_zero(env):
+    client, *_ = env
+    client.delete("/api/live/live-n")
+    rows = make_obs(n=40, congested=range(0)).to_dict("records")
+    last = None
+    for i, row in enumerate(rows):
+        body = sample_payload(row, "live-n", 5_000_000.0 + i)
+        if i >= 35:
+            body["rtt_mean_ms"] = None  # the probe measured nothing in these seconds
+        last = client.post("/api/ingest", json=body)
+        assert last.status_code == 200
+    rec = last.json()
+    assert rec["metrics"]["rtt_mean_ms"] is None  # reported back as missing
+    assert not rec["predictions"]["available"]  # ... so the prediction is withheld, not guessed
+
+
+def test_stored_live_sessions_are_listed_for_playback(env):
+    client, *_ = env
+    sessions = client.get("/api/live/streams").json()
+    ids = {s["stream_id"] for s in sessions}
+    assert {"live-a", "live-c"} <= ids or ids  # sessions created by the live tests above
+    one = next(s for s in sessions if s["stream_id"] == "live-a")
+    assert one["seconds"] == 40 and one["source"] == "live" and one["last_timestamp_s"] > one["first_timestamp_s"]
+    recs = client.get("/api/live/records", params={"stream_id": "live-a", "limit": 2000}).json()
+    assert recs["count"] == 40 and all(r["historical"] is False for r in recs["records"])

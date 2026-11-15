@@ -100,6 +100,8 @@ class _Runtime:
     skip_preflight: bool = False
     #: ``(timeline, net, env, devices) -> {name: collector}``; tests inject synthetic collectors
     build_collectors: Optional[Callable[..., Dict[str, Collector]]] = None
+    #: ``(timeline, collectors, net, env, capture_dev) -> feeder``; starts a live feed next to the collectors
+    live_factory: Optional[Callable[..., Any]] = None
 
 
 class ExperimentOrchestrator:
@@ -250,6 +252,9 @@ class ExperimentOrchestrator:
                     if name != "tshark":
                         collector.start()
 
+                if rt.live_factory is not None:
+                    state["feeder"] = rt.live_factory(timeline, collectors, net, eff, capture_dev)
+
                 executor = rt.executor(net, plan, eff)
                 state["executor"] = executor
                 t0_mono = mono + cfg.timeline.pre_roll_s
@@ -260,12 +265,16 @@ class ExperimentOrchestrator:
                 state["event_results"] = results
                 # keep sampling until the timeline (including the tail) is over
                 rt.sleep(max(0.0, timeline.end_wall - rt.clock() + 0.5))
-                for name in ("probe", "connections", "queue", "interface", "resources"):
+                if state.get("feeder") is not None:
+                    state["feeder"].stop()
+                for name in ("probe", "connections", "queue", "interface", "resources", "live_packets"):
                     if name in collectors:
                         collectors[name].stop()
                 if tshark is not None:
                     tshark.stop()
         finally:
+            if state.get("feeder") is not None:
+                state["feeder"].stop()
             for collector in collectors.values():  # also on errors: never leave a process behind
                 collector.stop()
             report = state["lifecycle"].last_report
@@ -356,6 +365,14 @@ class ExperimentOrchestrator:
 
         obs = ds.assemble_observations(meta, frames, n_seconds)
         state["observations"] = obs
+        feeder = state.get("feeder")
+        if feeder is not None:
+            from netguard.experiments.livefeed import compare_live_with_offline
+
+            meta.checks["live"] = feeder.summary()
+            meta.checks["live_vs_offline"] = compare_live_with_offline(feeder.samples, obs)
+            if feeder.posted == 0:
+                meta.errors.append(f"live feed delivered no samples: {feeder.last_error or 'unknown reason'}")
 
         # --- checks -> status
         checks = meta.checks
