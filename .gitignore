@@ -3,5 +3,15 @@ __pycache__/
 .venv/
 .pytest_cache/
 *.egg-info/
-results/
 *.log
+
+# Phase 2 outputs: datasets, raw collector output and packet captures are large and
+# reproducible, so they are not committed. The calibrated threshold and the small
+# sample/validation outputs under results/ are.
+data/*
+!data/.gitkeep
+!data/metadata/
+data/metadata/*
+!data/metadata/calibration.json
+logs/
+models/

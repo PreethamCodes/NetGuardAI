@@ -1,0 +1,19 @@
+{
+  "queue_delay_threshold_ms": 29.0,
+  "raw_percentile_ms": 28.30069600000098,
+  "percentile": 99.9,
+  "samples_used": 900,
+  "queue_delay_ms_max": 36.1184,
+  "queue_delay_ms_mean": 1.9716666666666667,
+  "floor_applied": false,
+  "method": "X = ceil(percentile of per-second bottleneck queue delay (max of both directions) over seconds with utilisation below max_utilisation_pct, pooled over the experiments)",
+  "source_scenario": "normal",
+  "max_utilisation_pct": 90.0,
+  "min_threshold_ms": 1.0,
+  "experiment_ids": [
+    "20261115T134955Z-normal-r1-7b068c",
+    "20261115T135525Z-normal-r2-7becf1",
+    "20261115T140055Z-normal-r3-0f2d9f"
+  ],
+  "calibrated_at": "2026-11-15T14:06:25.627995+00:00"
+}

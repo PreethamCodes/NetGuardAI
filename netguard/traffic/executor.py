@@ -183,8 +183,18 @@ class TrafficExecutor:
         return None
 
     # --------------------------------------------------------------------- run
-    def run(self) -> List[EventResult]:
-        """Execute the whole plan (blocking). Returns one result per event."""
+    @property
+    def t0_monotonic(self) -> float:
+        """``time.monotonic()`` value of scenario time 0 (valid once :meth:`run` has started)."""
+        return self._t0
+
+    def run(self, t0_monotonic: Optional[float] = None) -> List[EventResult]:
+        """Execute the whole plan (blocking). Returns one result per event.
+
+        ``t0_monotonic`` pins scenario time 0 to a ``time.monotonic()`` instant chosen by the
+        caller (the Phase 2 orchestrator uses it to align the collectors); by default time 0 is
+        shortly after the servers have been started.
+        """
         self.check_isolation()
         executor = self.env.traffic.executor
         threads: List[threading.Thread] = []
@@ -195,7 +205,10 @@ class TrafficExecutor:
             self._check_servers_alive()
 
             lead = executor.server_start_lead_s
-            self._t0 = time.monotonic() + lead  # iperf3 servers for t=0 events start before it
+            if t0_monotonic is None:
+                self._t0 = time.monotonic() + lead  # iperf3 servers for t=0 events start before it
+            else:
+                self._t0 = t0_monotonic
             logger.info("running %d events over %.0f s", len(self.plan.events), self.plan.duration_s)
             for event in sorted(self.plan.events, key=lambda e: e.start_s):
                 if not self._wait_until(event.start_s - lead):

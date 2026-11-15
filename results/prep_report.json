@@ -1,0 +1,287 @@
+{
+  "scheme": "three_way",
+  "queue_delay_threshold_ms": 29.0,
+  "runs": [
+    {
+      "experiment_id": "20261115T150802Z-degraded-r1-c2cb4c",
+      "scenario": "degraded",
+      "repetition": 1,
+      "status": "success",
+      "rows": 300,
+      "included": true,
+      "problems": [],
+      "warnings": []
+    },
+    {
+      "experiment_id": "20261115T151355Z-degraded-r2-1fd54e",
+      "scenario": "degraded",
+      "repetition": 2,
+      "status": "success",
+      "rows": 300,
+      "included": true,
+      "problems": [],
+      "warnings": []
+    },
+    {
+      "experiment_id": "20261115T151955Z-degraded-r3-5a3abe",
+      "scenario": "degraded",
+      "repetition": 3,
+      "status": "success",
+      "rows": 300,
+      "included": true,
+      "problems": [],
+      "warnings": []
+    },
+    {
+      "experiment_id": "20261115T143506Z-flash_crowd-r1-51bb23",
+      "scenario": "flash_crowd",
+      "repetition": 1,
+      "status": "success",
+      "rows": 300,
+      "included": true,
+      "problems": [],
+      "warnings": []
+    },
+    {
+      "experiment_id": "20261115T144035Z-flash_crowd-r2-254c50",
+      "scenario": "flash_crowd",
+      "repetition": 2,
+      "status": "success",
+      "rows": 300,
+      "included": true,
+      "problems": [],
+      "warnings": []
+    },
+    {
+      "experiment_id": "20261115T144606Z-flash_crowd-r3-ef9f19",
+      "scenario": "flash_crowd",
+      "repetition": 3,
+      "status": "success",
+      "rows": 300,
+      "included": true,
+      "problems": [],
+      "warnings": []
+    },
+    {
+      "experiment_id": "20261115T134955Z-normal-r1-7b068c",
+      "scenario": "normal",
+      "repetition": 1,
+      "status": "success",
+      "rows": 300,
+      "included": true,
+      "problems": [],
+      "warnings": []
+    },
+    {
+      "experiment_id": "20261115T135525Z-normal-r2-7becf1",
+      "scenario": "normal",
+      "repetition": 2,
+      "status": "success",
+      "rows": 300,
+      "included": true,
+      "problems": [],
+      "warnings": []
+    },
+    {
+      "experiment_id": "20261115T140055Z-normal-r3-0f2d9f",
+      "scenario": "normal",
+      "repetition": 3,
+      "status": "success",
+      "rows": 300,
+      "included": true,
+      "problems": [],
+      "warnings": []
+    },
+    {
+      "experiment_id": "20261115T140625Z-ramp-r1-e357bb",
+      "scenario": "ramp",
+      "repetition": 1,
+      "status": "failed",
+      "rows": 0,
+      "included": false,
+      "problems": [
+        "experiment status is 'failed'",
+        "processed table is missing"
+      ],
+      "warnings": []
+    },
+    {
+      "experiment_id": "20261115T141815Z-ramp-r1-47e977",
+      "scenario": "ramp",
+      "repetition": 1,
+      "status": "success",
+      "rows": 300,
+      "included": true,
+      "problems": [],
+      "warnings": []
+    },
+    {
+      "experiment_id": "20261115T142353Z-ramp-r2-b8dbc1",
+      "scenario": "ramp",
+      "repetition": 2,
+      "status": "failed",
+      "rows": 300,
+      "included": false,
+      "problems": [
+        "experiment status is 'failed'"
+      ],
+      "warnings": []
+    },
+    {
+      "experiment_id": "20261115T154036Z-ramp-r2-0aa9a4",
+      "scenario": "ramp",
+      "repetition": 2,
+      "status": "success",
+      "rows": 300,
+      "included": true,
+      "problems": [],
+      "warnings": []
+    },
+    {
+      "experiment_id": "20261115T142932Z-ramp-r3-94f8ac",
+      "scenario": "ramp",
+      "repetition": 3,
+      "status": "success",
+      "rows": 300,
+      "included": true,
+      "problems": [],
+      "warnings": []
+    },
+    {
+      "experiment_id": "20261115T145136Z-udp_flood-r1-2c0f7e",
+      "scenario": "udp_flood",
+      "repetition": 1,
+      "status": "success",
+      "rows": 300,
+      "included": true,
+      "problems": [],
+      "warnings": []
+    },
+    {
+      "experiment_id": "20261115T145705Z-udp_flood-r2-c1ae60",
+      "scenario": "udp_flood",
+      "repetition": 2,
+      "status": "success",
+      "rows": 300,
+      "included": true,
+      "problems": [],
+      "warnings": []
+    },
+    {
+      "experiment_id": "20261115T150233Z-udp_flood-r3-28be3b",
+      "scenario": "udp_flood",
+      "repetition": 3,
+      "status": "success",
+      "rows": 300,
+      "included": true,
+      "problems": [],
+      "warnings": []
+    }
+  ],
+  "runs_included": 15,
+  "runs_excluded": 2,
+  "feature_count": 105,
+  "rows": 4500,
+  "splits": {
+    "test": {
+      "runs": 5,
+      "rows": 1500,
+      "complete_feature_rows": 1350,
+      "prediction_rows": 1200,
+      "prediction_positive": 168,
+      "prediction_positive_when_not_congested": 92,
+      "scenarios": [
+        "degraded",
+        "flash_crowd",
+        "normal",
+        "ramp",
+        "udp_flood"
+      ]
+    },
+    "train": {
+      "runs": 5,
+      "rows": 1500,
+      "complete_feature_rows": 1350,
+      "prediction_rows": 1200,
+      "prediction_positive": 180,
+      "prediction_positive_when_not_congested": 95,
+      "scenarios": [
+        "degraded",
+        "flash_crowd",
+        "normal",
+        "ramp",
+        "udp_flood"
+      ]
+    },
+    "val": {
+      "runs": 5,
+      "rows": 1500,
+      "complete_feature_rows": 1350,
+      "prediction_rows": 1200,
+      "prediction_positive": 150,
+      "prediction_positive_when_not_congested": 65,
+      "scenarios": [
+        "degraded",
+        "flash_crowd",
+        "normal",
+        "ramp",
+        "udp_flood"
+      ]
+    }
+  },
+  "labels_by_scenario": {
+    "DEGRADED": {
+      "rows": 900,
+      "current_congestion_seconds": 0,
+      "future_label_rows": 810,
+      "future_congestion_positive": 0,
+      "runs": 3
+    },
+    "FLASH_CROWD": {
+      "rows": 900,
+      "current_congestion_seconds": 3,
+      "future_label_rows": 810,
+      "future_congestion_positive": 30,
+      "runs": 3
+    },
+    "NORMAL": {
+      "rows": 900,
+      "current_congestion_seconds": 0,
+      "future_label_rows": 810,
+      "future_congestion_positive": 0,
+      "runs": 3
+    },
+    "RAMP": {
+      "rows": 900,
+      "current_congestion_seconds": 714,
+      "future_label_rows": 810,
+      "future_congestion_positive": 270,
+      "runs": 3
+    },
+    "UDP_FLOOD": {
+      "rows": 900,
+      "current_congestion_seconds": 195,
+      "future_label_rows": 810,
+      "future_congestion_positive": 198,
+      "runs": 3
+    }
+  },
+  "worst_missing_features": {
+    "rtt_mean_ms_lag30": 0.1,
+    "utilisation_pct_lag30": 0.1,
+    "queue_delay_ms_lag30": 0.1,
+    "throughput_mbps_lag30": 0.1,
+    "tcp_retransmissions_lag30": 0.1,
+    "fwd_pps_lag30": 0.1,
+    "active_connections_lag30": 0.1,
+    "loss_pct_lag30": 0.1,
+    "tcp_retransmissions_lag10": 0.0333,
+    "rtt_mean_ms_lag10": 0.0333
+  },
+  "notes": [
+    "Windows are trailing (past + current second); lags are positive shifts; NaN marks seconds without a full window or lag (the first 30 s of each run) and is never interpolated.",
+    "VM CPU/RAM are in the data but excluded from the model inputs.",
+    "syn_ratio = SYN packets of flows started in the second / TCP packets of that second (NFStream flows).",
+    "congested_causal uses only seconds <= t (ground-truth current_congestion needs the next 2 s)."
+  ]
+}

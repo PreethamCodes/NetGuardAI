@@ -5,6 +5,7 @@
     python -m netguard plan ramp [--events]     # dry run: show the traffic plan (any OS)
     sudo python -m netguard topology --pingall  # build the dumbbell (Ubuntu VM, root)
     sudo python -m netguard run ramp            # run one scenario (Ubuntu VM, root)
+    sudo python -m netguard experiment run      # Phase 2 campaign: collectors + Parquet dataset (Ubuntu VM, root)
 """
 
 from __future__ import annotations
@@ -30,7 +31,7 @@ logger = logging.getLogger("netguard.cli")
 
 
 def _parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="netguard", description="NetGuard AI - Phase 1 simulation tools")
+    p = argparse.ArgumentParser(prog="netguard", description="NetGuard AI - simulation (Phase 1) and experiment orchestration (Phase 2)")
     p.add_argument("--config-dir", default=str(DEFAULT_CONFIG_DIR), help="directory with the YAML files")
     p.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     p.add_argument("--log-file", default=None, help="also write logs to this file")
@@ -64,6 +65,18 @@ def _parser() -> argparse.ArgumentParser:
     link_args(sp)
     sp.add_argument("--pingall", action="store_true", help="run pingAll")
     sp.add_argument("--cli", action="store_true", help="open the Mininet CLI afterwards")
+
+    from netguard.experiments.cli import register  # Phase 2 sub-commands
+
+    register(sub)
+
+    from netguard.prep.cli import register as register_prep  # Phase 3 sub-command
+
+    register_prep(sub)
+
+    from netguard.ml.cli import register as register_ml  # Phase 4/5 sub-command
+
+    register_ml(sub)
     return p
 
 
@@ -159,7 +172,32 @@ def cmd_topology(args: argparse.Namespace) -> int:
     return 0
 
 
-_COMMANDS = {"validate": cmd_validate, "list": cmd_list, "plan": cmd_plan, "run": cmd_run, "topology": cmd_topology}
+def cmd_experiment(args: argparse.Namespace) -> int:
+    from netguard.experiments.cli import cmd_experiment as handler
+
+    return handler(args)
+
+
+def cmd_dataset(args: argparse.Namespace) -> int:
+    from netguard.experiments.cli import cmd_dataset as handler
+
+    return handler(args)
+
+
+def cmd_prepare(args: argparse.Namespace) -> int:
+    from netguard.prep.cli import cmd_prepare as handler
+
+    return handler(args)
+
+
+def cmd_train(args: argparse.Namespace) -> int:
+    from netguard.ml.cli import cmd_train as handler
+
+    return handler(args)
+
+
+_COMMANDS = {"validate": cmd_validate, "list": cmd_list, "plan": cmd_plan, "run": cmd_run, "topology": cmd_topology,
+             "experiment": cmd_experiment, "dataset": cmd_dataset, "prepare": cmd_prepare, "train": cmd_train}
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:

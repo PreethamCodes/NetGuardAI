@@ -1,0 +1,193 @@
+[
+  {
+    "experiment_id": "20261115T134955Z-normal-r1-7b068c",
+    "scenario": "normal",
+    "repetition": 1,
+    "seed": 42,
+    "status": "success",
+    "started_at": "2026-11-15T13:49:55.432+00:00",
+    "ended_at": "2026-11-15T13:55:25.475+00:00",
+    "errors": [],
+    "invalid_reasons": []
+  },
+  {
+    "experiment_id": "20261115T135525Z-normal-r2-7becf1",
+    "scenario": "normal",
+    "repetition": 2,
+    "seed": 43,
+    "status": "success",
+    "started_at": "2026-11-15T13:55:25.559+00:00",
+    "ended_at": "2026-11-15T14:00:55.802+00:00",
+    "errors": [],
+    "invalid_reasons": []
+  },
+  {
+    "experiment_id": "20261115T140055Z-normal-r3-0f2d9f",
+    "scenario": "normal",
+    "repetition": 3,
+    "seed": 44,
+    "status": "success",
+    "started_at": "2026-11-15T14:00:55.916+00:00",
+    "ended_at": "2026-11-15T14:06:25.377+00:00",
+    "errors": [],
+    "invalid_reasons": []
+  },
+  {
+    "experiment_id": "20261115T140625Z-ramp-r1-e357bb",
+    "scenario": "ramp",
+    "repetition": 1,
+    "seed": 42,
+    "status": "failed",
+    "started_at": "2026-11-15T14:06:25.745+00:00",
+    "ended_at": "2026-11-15T14:08:32.781+00:00",
+    "errors": [
+      "interrupted by the user"
+    ],
+    "invalid_reasons": []
+  },
+  {
+    "experiment_id": "20261115T141815Z-ramp-r1-47e977",
+    "scenario": "ramp",
+    "repetition": 1,
+    "seed": 42,
+    "status": "success",
+    "started_at": "2026-11-15T14:18:15.447+00:00",
+    "ended_at": "2026-11-15T14:23:53.207+00:00",
+    "errors": [],
+    "invalid_reasons": []
+  },
+  {
+    "experiment_id": "20261115T142353Z-ramp-r2-b8dbc1",
+    "scenario": "ramp",
+    "repetition": 2,
+    "seed": 43,
+    "status": "failed",
+    "started_at": "2026-11-15T14:23:53.311+00:00",
+    "ended_at": "2026-11-15T14:29:32.159+00:00",
+    "errors": [
+      "1 traffic event(s) did not complete: ['ramp-0215: failed client still running 10s after its planned end']"
+    ],
+    "invalid_reasons": []
+  },
+  {
+    "experiment_id": "20261115T142932Z-ramp-r3-94f8ac",
+    "scenario": "ramp",
+    "repetition": 3,
+    "seed": 44,
+    "status": "success",
+    "started_at": "2026-11-15T14:29:32.244+00:00",
+    "ended_at": "2026-11-15T14:35:06.315+00:00",
+    "errors": [],
+    "invalid_reasons": []
+  },
+  {
+    "experiment_id": "20261115T143506Z-flash_crowd-r1-51bb23",
+    "scenario": "flash_crowd",
+    "repetition": 1,
+    "seed": 42,
+    "status": "success",
+    "started_at": "2026-11-15T14:35:06.396+00:00",
+    "ended_at": "2026-11-15T14:40:35.913+00:00",
+    "errors": [],
+    "invalid_reasons": []
+  },
+  {
+    "experiment_id": "20261115T144035Z-flash_crowd-r2-254c50",
+    "scenario": "flash_crowd",
+    "repetition": 2,
+    "seed": 43,
+    "status": "success",
+    "started_at": "2026-11-15T14:40:35.977+00:00",
+    "ended_at": "2026-11-15T14:46:06.095+00:00",
+    "errors": [],
+    "invalid_reasons": []
+  },
+  {
+    "experiment_id": "20261115T144606Z-flash_crowd-r3-ef9f19",
+    "scenario": "flash_crowd",
+    "repetition": 3,
+    "seed": 44,
+    "status": "success",
+    "started_at": "2026-11-15T14:46:06.163+00:00",
+    "ended_at": "2026-11-15T14:51:36.022+00:00",
+    "errors": [],
+    "invalid_reasons": []
+  },
+  {
+    "experiment_id": "20261115T145136Z-udp_flood-r1-2c0f7e",
+    "scenario": "udp_flood",
+    "repetition": 1,
+    "seed": 42,
+    "status": "success",
+    "started_at": "2026-11-15T14:51:36.088+00:00",
+    "ended_at": "2026-11-15T14:57:05.055+00:00",
+    "errors": [],
+    "invalid_reasons": []
+  },
+  {
+    "experiment_id": "20261115T145705Z-udp_flood-r2-c1ae60",
+    "scenario": "udp_flood",
+    "repetition": 2,
+    "seed": 43,
+    "status": "success",
+    "started_at": "2026-11-15T14:57:05.119+00:00",
+    "ended_at": "2026-11-15T15:02:33.602+00:00",
+    "errors": [],
+    "invalid_reasons": []
+  },
+  {
+    "experiment_id": "20261115T150233Z-udp_flood-r3-28be3b",
+    "scenario": "udp_flood",
+    "repetition": 3,
+    "seed": 44,
+    "status": "success",
+    "started_at": "2026-11-15T15:02:33.670+00:00",
+    "ended_at": "2026-11-15T15:08:02.241+00:00",
+    "errors": [],
+    "invalid_reasons": []
+  },
+  {
+    "experiment_id": "20261115T150802Z-degraded-r1-c2cb4c",
+    "scenario": "degraded",
+    "repetition": 1,
+    "seed": 42,
+    "status": "success",
+    "started_at": "2026-11-15T15:08:02.308+00:00",
+    "ended_at": "2026-11-15T15:13:54.983+00:00",
+    "errors": [],
+    "invalid_reasons": []
+  },
+  {
+    "experiment_id": "20261115T151355Z-degraded-r2-1fd54e",
+    "scenario": "degraded",
+    "repetition": 2,
+    "seed": 43,
+    "status": "success",
+    "started_at": "2026-11-15T15:13:55.057+00:00",
+    "ended_at": "2026-11-15T15:19:55.058+00:00",
+    "errors": [],
+    "invalid_reasons": []
+  },
+  {
+    "experiment_id": "20261115T151955Z-degraded-r3-5a3abe",
+    "scenario": "degraded",
+    "repetition": 3,
+    "seed": 44,
+    "status": "success",
+    "started_at": "2026-11-15T15:19:55.116+00:00",
+    "ended_at": "2026-11-15T15:26:00.041+00:00",
+    "errors": [],
+    "invalid_reasons": []
+  },
+  {
+    "experiment_id": "20261115T154036Z-ramp-r2-0aa9a4",
+    "scenario": "ramp",
+    "repetition": 2,
+    "seed": 43,
+    "status": "success",
+    "started_at": "2026-11-15T15:40:36.114+00:00",
+    "ended_at": "2026-11-15T15:46:10.345+00:00",
+    "errors": [],
+    "invalid_reasons": []
+  }
+]

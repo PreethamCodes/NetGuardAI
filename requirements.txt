@@ -4,3 +4,19 @@
 PyYAML==6.0.3      # YAML configuration files
 scapy==2.8.0       # crafts/parses DNS packets in the DNS traffic worker
 pytest==9.2.0      # unit and integration tests
+# --- Phase 2 (experiment orchestration, collectors, dataset) ---
+psutil==7.1.0      # VM CPU / RAM monitor
+pandas==3.1.1      # per-second observation tables
+pyarrow==26.0.1    # Parquet storage
+nfstream==6.6.0    # flow extraction from header-only pcaps (needs libpcap; wheels exist for CPython 3.14)
+# --- Phase 3-6 (features, ML, backend) ---
+scikit-learn==1.9.1
+xgboost==3.4.1
+scipy==1.18.1
+matplotlib==3.11.2
+joblib==1.6.0
+fastapi==0.163.0
+uvicorn==0.54.0
+pydantic==2.14.3
+SQLAlchemy==2.1.8
+websockets==17.4

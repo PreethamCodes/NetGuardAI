@@ -1,0 +1,33 @@
+# Phase 2 campaign: the five primary scenarios, three repetitions each, ~5 min per run.
+# Run:  sudo .venv/bin/python -m netguard experiment run configs/experiments/phase2.yaml
+name: phase2-primary
+scenarios: [normal, ramp, flash_crowd, udp_flood, degraded]
+repetitions: 3
+seeds: [42, 43, 44]              # one per repetition; recorded in every experiment's metadata
+# duration_s: 300                # default: each scenario's own duration_s (300 s)
+
+timeline:
+  pre_roll_s: 5                  # collectors start this long before scenario time 0 (raw data only)
+  tail_s: 3                      # ... and stop this long after the end (late probe replies)
+
+probe:                           # RTT / jitter / probe-loss probe (ping inside Mininet)
+  src: h4
+  dst: h8
+  interval_s: 0.2
+  payload_bytes: 56
+
+capture:                         # TShark header-only capture on the bottleneck + NFStream flows
+  enabled: true
+  snaplen: 96
+  interface: left                # s1 end of the bottleneck sees both directions of the link
+  keep_pcap: false               # delete the capture after analysis (set true to keep it)
+  nfstream: true
+
+validation:
+  cpu_saturation_pct: 100        # any CPU sample at/above this marks the run invalid
+  max_missing_fraction: 0.05     # required metrics may miss at most 5 % of the seconds
+
+check_ping: true                 # pingAll before the run
+output:
+  data_dir: data
+  results_dir: results

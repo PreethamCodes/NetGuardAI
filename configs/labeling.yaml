@@ -1,0 +1,20 @@
+# Ground-truth congestion definition (Phase 2). These values define the research labels:
+# do not change them between experiments of the same dataset.
+#
+# A second is "congested" when utilisation >= utilisation_pct AND (queue delay >= X OR
+# packet loss > loss_pct), and this holds for at least min_consecutive_s consecutive seconds.
+horizon_s: 30                  # future_congestion looks this many seconds ahead
+utilisation_pct: 90
+loss_pct: 1
+min_consecutive_s: 3
+
+# X, the queue-delay threshold in ms. Leave null until it has been calibrated from the
+# NORMAL experiments (python -m netguard experiment calibrate); the calibrated value is
+# stored in data/metadata/calibration.json and used when this is null. Once set it stays fixed.
+queue_delay_threshold_ms: null
+
+calibration:                   # how X is derived (see docs/phase2.md)
+  source_scenario: normal
+  percentile: 99.9             # X = this percentile of the NORMAL queue delay, rounded up to whole ms
+  max_utilisation_pct: 90      # ... over seconds whose utilisation is below this value
+  min_threshold_ms: 1.0        # floor so X cannot be 0
