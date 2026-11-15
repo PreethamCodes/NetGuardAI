@@ -15,3 +15,5 @@ data/metadata/*
 !data/metadata/calibration.json
 logs/
 models/
+node_modules/
+frontend/dist/
