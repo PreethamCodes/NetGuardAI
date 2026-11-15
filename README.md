@@ -1,153 +1,296 @@
 # NetGuard AI
 
-Modular system that monitors traffic in an emulated network, flags unusual traffic and predicts congestion.
-See `NetGuard AI — Project Documentation.pdf` for the full design.
+AI/ML-based network traffic analysis, anomaly detection and **30-second-ahead congestion prediction**, built and
+evaluated on traffic generated in an emulated network (Mininet + Open vSwitch) with a FastAPI backend and a React
+dashboard.
 
-**This repository currently implements Phase 1 only: network simulation and traffic generation.**
-The experiment orchestrator, monitoring collectors, Parquet dataset pipeline and ML models are later phases and are
-not part of this code.
+> Step-by-step commands are in **[docs/RUN_GUIDE.md](docs/RUN_GUIDE.md)**. This file explains what the system is, how the
+> pieces fit together and what every file does. The original project design is in
+> `NetGuard AI — Project Documentation.pdf`.
 
-All traffic, including the attack-like UDP flood, is generated **only between Mininet hosts inside the isolated
-Ubuntu VM**. Nothing here changes network configuration outside Mininet.
+All traffic, including the attack-like UDP flood, exists **only between Mininet hosts inside the Ubuntu VM**. Nothing
+here changes the network configuration of the machine or of the emulated network based on model output: the system only
+analyses and recommends.
 
-## Layout
+---------------------------------------------------------------------------------------------------------------------
 
-```
-configs/
-  topology.yaml        hosts per side, subnet, switch names
-  links.yaml           bottleneck + access link parameters (bandwidth, delay, loss, queue)
-  traffic.yaml         tool settings (iperf3/HTTP/DNS/ping/hping3 ports...) and safety limits
-  scenarios/*.yaml     normal, burst, periodic, random, ramp, flash_crowd, udp_flood(+_hping3), degraded
-netguard/
-  config/              typed, validated models + YAML loader for topology / links / traffic
-  scenarios/           scenario models, per-pattern option schema, loader, one-shot runner
-  topology/            dumbbell.py (Mininet + OVS), tc.py (netem + tbf command builders / parsers)
-  traffic/             patterns.py + planner.py (pure, seeded), commands.py (argv builders),
-                       executor.py (runs a plan on Mininet hosts), workers/ (HTTP, DNS programs)
-  utils/               validation helpers, logging, system pre-flight checks
-  cli.py               python -m netguard {validate,list,plan,topology,run}
-tests/
-  unit/                run anywhere (Windows, Linux); no Mininet needed
-  integration/         needs the Ubuntu VM, root, Mininet, Open vSwitch
-```
+## 1. What it does
 
-## Topology
+| Goal | How it is done |
+|---|---|
+| Emulate a network | Mininet dumbbell topology, two Open vSwitch switches, a 10 Mbit/s / 20 ms bottleneck shaped with `tc` |
+| Generate traffic | iperf3 (TCP/UDP), hping3, ping, a Python HTTP server/client, a Scapy DNS responder/client, driven by YAML scenarios |
+| Measure | Once per second: `ip -s link`, `tc -s qdisc`, `ss -ti`, a 0.2 s ping probe, psutil, TShark and NFStream |
+| Label | Ground-truth `scenario_label`, `current_congestion`, `future_congestion` (next 30 s), `time_to_congestion` |
+| Learn | Traffic classification, anomaly detection (Isolation Forest + LOF + rules), 30 s congestion prediction |
+| Serve | FastAPI + SQLite + WebSockets, historical replay and a real live feed |
+| Show | React + TypeScript + Tailwind + Recharts dashboard |
 
 ```
-h1 ─┐                                           ┌─ h5
-h2 ─┼─ s1 ══════ bottleneck (10 Mbit/s, 20 ms) ══════ s2 ─┼─ h6      (hosts_per_side: 3 or 4)
-h3 ─┤                                           ├─ h7
-h4 ─┘                                           └─ h8
-      access links: 100 Mbit/s, no delay
+                         ┌────────────────────────── Ubuntu VM (root) ──────────────────────────┐
+ configs/*.yaml ───────▶ │  Mininet dumbbell  ──  traffic generators (iperf3, hping3, http, dns)│
+ (topology, links,       │        │                                                              │
+  scenarios, campaign)   │        ▼   1 s grid, shared clock                                     │
+                         │  collectors: interface · queue(tc) · ss · ping probe · psutil ·       │
+                         │              TShark pcap → NFStream flows                             │
+                         └────────┬──────────────────────────────────────────┬──────────────────┘
+                                  │ per-experiment Parquet + metadata        │ live: 1 JSON sample / s
+                                  ▼                                          ▼
+   labels (calibrated X) → data/processed → features (past only) → models/   POST /api/ingest
+                                  │              │                   │               │
+                                  │        data/features      results/ml_results     │
+                                  ▼                                  ▼               ▼
+                              replay  ──────────────▶  FastAPI backend (SQLite, WebSockets)
+                                                                     │
+                                                                     ▼
+                                                         React dashboard (port 5173)
 ```
 
-* `s1`, `s2` are Open vSwitch bridges in `standalone` mode (learning switches, no SDN controller).
-* Every interface is shaped with Linux `tc`: `netem` (delay, jitter, loss) as the root qdisc and a `tbf` child
-  (rate + a small drop-tail queue of `queue_packets` packets). Plain Mininet `Link`s are used, not `TCLink`.
-* **`delay_ms` is one-way and is applied to both directions**, so the default bottleneck has ≈ 40 ms RTT.
-* The code refuses configurations where the access links are not faster than the bottleneck.
-* After starting, the qdiscs are read back from the kernel and compared with the configuration; a mismatch aborts.
+---------------------------------------------------------------------------------------------------------------------
 
-## Traffic generation
+## 2. Current results (real data, nothing simulated)
 
-Scenarios are lists of *components*; each component has a *pattern* that lays its flows out over time. A scenario is
-expanded into a deterministic list of timed events (`python -m netguard plan …` shows it without running anything).
-Same scenario + same seed ⇒ identical events.
+* **Dataset:** 15 successful experiments (5 scenarios × 3 repetitions × 300 s, seeds 42/43/44) = **4,500 one-second rows**.
+  Two failed attempts (one interrupted, one iperf3 overrun) are on record and excluded. No run was invalid (CPU never hit 100 %
+  inside a measurement window).
+* **Congestion threshold X = 29 ms**, calibrated from the three NORMAL runs (99.9th percentile of queue delay on seconds with
+  utilisation < 90 %, rounded up) and then frozen (`data/metadata/calibration.json`).
+* **Features:** 105 per second (1 s + 5 s trailing windows, 5/10/30 s lags), split **by run**: repetition 1 → train,
+  2 → validation, 3 → test (every scenario appears in every split).
 
-| Pattern | What it does | Main parameters |
+Held-out **test** runs (one run per scenario):
+
+| Task | Best result |
+|---|---|
+| Traffic classification (5 scenarios) | Random Forest accuracy 0.908, XGBoost 0.901, Decision Tree 0.893 |
+| Anomaly detection (vs NORMAL) | Isolation Forest precision 0.97, recall 1.00, **false-positive rate on NORMAL 12.2 %**; flags **100 % of FLASH_CROWD** (legitimate traffic) |
+| Congestion within 30 s, on seconds *not yet congested* | Logistic Regression precision 0.87, recall 0.52, F1 0.65, warned before 5 of 6 onsets (mean lead ≈ 30 s). Baselines: utilisation > 80 % F1 0.33, persistence cannot warn early |
+
+**Read these honestly.** The test set has only 6 congestion onsets, from one run per scenario, so the 30-second prediction
+result is *tentative evidence*, not proof of reliable prediction. Full tables: `results/ml_results.md`,
+`results/prep_report.md`, `results/validation_report.md`.
+
+**Live check:** a real live RAMP run (150 s) streamed 150 samples to the backend; its predictions matched the offline
+pipeline for the same run on 100 % of seconds (mean probability difference 0.0012).
+
+---------------------------------------------------------------------------------------------------------------------
+
+## 3. How the pieces work (end to end)
+
+### 3.1 Network (Phase 1)
+`netguard/topology/dumbbell.py` builds `h1–h4 — s1 ═ bottleneck ═ s2 — h5–h8`. Switches are OVS in `standalone` mode
+(learning switches, no controller). `netguard/topology/tc.py` shapes every interface with `netem` (delay/loss) + `tbf`
+(rate and a 50-packet drop-tail queue). Shaping is read back from the kernel and compared with the configuration. `delay_ms`
+is one-way and applied in both directions (≈ 40 ms RTT). The code refuses configurations where the access links are not
+faster than the bottleneck.
+
+### 3.2 Traffic (Phase 1)
+A scenario YAML lists *components*; each has a *pattern* (NORMAL, BURST, PERIODIC, RANDOM, RAMP, FLASH_CROWD, UDP_FLOOD) that
+`netguard/traffic/patterns.py` expands into a deterministic list of timed events (same scenario + seed ⇒ same events).
+`netguard/traffic/executor.py` runs the events on Mininet hosts. Safety limits live in `configs/traffic.yaml`; hosts are
+checked to be inside the private subnet before anything starts; hping3 is always bounded and rate-limited.
+
+The five primary scenarios:
+
+| Scenario | File | Purpose |
 |---|---|---|
-| `NORMAL` | steady flows, random start offset per client | `rate_mbps` / `request_rate`, `clients`, `options.start_jitter_s` |
-| `BURST` | optional base load + bursts that then drop back | `rate_mbps` (burst), `burst_interval_s`, `options.{base_rate_mbps,burst_duration_s,burst_count}`, `start_s` = first burst |
-| `PERIODIC` | the same transfer repeated every period | `rate_mbps`, `options.{period_s,on_duration_s}` |
-| `RANDOM` | random rate / duration / protocol / peer per flow slot | `clients` (slots), `seed`, `options.{rate_range_mbps,duration_range_s,gap_range_s,protocols}` |
-| `RAMP` | staircase of aggregate load that crosses capacity at `onset_s` (default 60 s) | `options.{start_load,onset_load,max_load,onset_s,step_s}` as fractions of bottleneck capacity |
-| `FLASH_CROWD` | many legitimate TCP clients arrive within `spread_s` | `clients`, `connections`, `start_s`, `duration_s`, `options.spread_s` |
-| `UDP_FLOOD` | rate-limited high-rate UDP between Mininet hosts | `rate_mbps`, `packet_size`, `clients`, `start_s`, `duration_s` |
+| NORMAL | `configs/scenarios/normal.yaml` | baseline mix of TCP, UDP, HTTP, DNS, ping (~35 % load) |
+| RAMP | `ramp.yaml` | aggregate UDP load rises in steps and crosses capacity at ~60 s |
+| FLASH_CROWD | `flash_crowd.yaml` | many legitimate TCP clients arrive within seconds |
+| UDP_FLOOD | `udp_flood.yaml` | controlled high-rate UDP between Mininet hosts |
+| DEGRADED | `degraded.yaml` | +60 ms delay and 3 % loss with normal load (`link_overrides`) |
 
-Common component fields: `name`, `pattern`, `tool` (`iperf3`, `hping3`, `ping`, `http`, `dns`), `protocol`
-(`tcp`/`udp`; inferred for the other tools), `src`/`dst` (`left`, `right`, `all` or host names such as `h1`;
-**IP addresses are rejected**), `rate_mbps` (iperf3/hping3, application payload, per client) or `request_rate`
-(http/dns/ping, per second, per client), `packet_size` (payload bytes), `duration_s`, `start_s`, `clients`,
-`connections` (parallel TCP connections / client threads), `burst_interval_s` (BURST only), `seed`.
-A scenario may also set `link_overrides` (e.g. the `degraded` scenario adds 60 ms delay and 3 % loss).
-The top-level scenario fields are `name`, `description`, `duration_s`, `seed`, `link_overrides`, `components`.
+(`burst`, `periodic`, `random`, `udp_flood_hping3` are extra Phase 1 scenarios, not part of the dataset.)
 
-Tools: **iperf3** (TCP/UDP, one server port per event, `-J` JSON output), **hping3** (UDP only, always bounded by
-`-c` and rate-limited with `-i`; never `--flood`, spoofing or random sources), **ping**, a **Python HTTP**
-server/client (a new TCP connection per request) and a **DNS** responder plus a client that crafts and parses
-queries with **Scapy** (sent over ordinary UDP sockets). Safety limits (max rate, clients, events, packet size,
-hping3 packets/s) live in `configs/traffic.yaml`; before running, every involved host's real IP is checked to be
-inside the private topology subnet.
+### 3.3 Collection (Phase 2)
+`netguard/experiments/orchestrator.py` runs one experiment: clean Mininet → build and shape the network → start TShark → start
+the collectors on a **shared one-second grid** (`timeline.py`) → run the traffic plan → stop everything → tear Mininet down and
+verify the cleanup → derive per-second metrics, flows and labels → write Parquet + metadata. A run is `success`, `failed`
+(missing collector output, failed traffic event, bad cleanup) or `invalid` (VM CPU reached 100 % during the measurement window).
+Missing values stay `NaN`; nothing is filled or interpolated.
 
-Rate-shaping patterns are restricted to bandwidth tools (`iperf3`, `hping3`); `NORMAL` accepts all tools and
-`FLASH_CROWD` accepts `iperf3` (TCP) and `http`.
+| Metric | Source | Collector file |
+|---|---|---|
+| throughput, pps, utilisation | `ip -s -j link` on both bottleneck ports | `collectors/interface.py` |
+| queue backlog, delay, drops, loss | `tc -s -j qdisc` (tbf backlog ÷ link rate) | `collectors/queue.py` |
+| RTT, jitter, probe loss | `ping -i 0.2` inside Mininet | `collectors/probe.py` |
+| connections, TCP retransmissions | `ss -tinH` in every host namespace via `nsenter` | `collectors/connections.py` |
+| CPU, RAM | psutil | `collectors/resources.py` |
+| protocol counts | TShark header-only capture (96 B) | `collectors/capture.py` |
+| flow records | NFStream on that pcap | `collectors/flows.py` |
+| live protocol/flow counts | `tshark -l` stream | `collectors/livepackets.py` |
 
-## Installation (inside the Ubuntu VM)
+### 3.4 Labels (`netguard/experiments/labels.py`, `configs/labeling.yaml`)
+A second is **congested** when utilisation ≥ 90 % **and** (queue delay ≥ X **or** loss > 1 %), holding for **≥ 3 consecutive seconds**.
+Utilisation, queue delay and loss are the worse of the two bottleneck directions; loss is the `tc` drop percentage.
+An **onset** is the first second of such a run.
 
-```bash
-sudo apt update
-sudo apt install -y mininet openvswitch-switch iperf3 hping3 iproute2 ethtool python3-venv python3-pip
-sudo systemctl enable --now openvswitch-switch
-sudo mn --test pingall          # sanity check of Mininet + OVS itself (should show 0% dropped)
+* `current_congestion[t]` – t belongs to a congested run.
+* `future_congestion[t]` – a *new, separate* onset occurs in `(t, t+30]` (a second already inside an episode asks about the *next* episode).
+* `time_to_congestion[t]` – seconds to that next onset (**evaluation only, never a model input**).
+* The last 30 s of each run have **no** `future_congestion` (`future_label_available = False`); unmeasured seconds give null labels.
+
+**X calibration:** `python -m netguard experiment calibrate` (also automatic after the NORMAL runs) pools NORMAL seconds with
+utilisation < 90 %, takes the 99.9th percentile of queue delay, rounds up to whole ms (floor 1 ms) and writes
+`data/metadata/calibration.json`. It refuses to overwrite unless `--force`.
+
+### 3.5 Features (Phase 3, `netguard/prep/`)
+`python -m netguard prepare` validates every run (status, duplicates, gap-free 1 s timestamps, labels recomputed and compared),
+excludes bad runs, builds features **for one run at a time**, assigns splits by run and fits a `StandardScaler` on training
+rows only.
+
+* 1 s signals + trailing 5 s **mean/max/std/slope**; **5/10/30 s lags** for the key signals; protocol shares; SYN ratio;
+  `congested_causal` (a past-only stand-in for the label, because the true `current_congestion` needs the next 2 s).
+* First 30 s of each run have incomplete lags → `NaN`, flagged `features_complete = False`; never filled.
+* `valid_for_prediction` = complete features **and** a valid 30 s label.
+* Labels, IDs and VM CPU/RAM are never model inputs.
+
+### 3.6 Models (Phase 4/5, `netguard/ml/`) — `python -m netguard train`
+* **Classification** – Decision Tree, Random Forest, XGBoost predict the scenario.
+* **Anomaly detection** – Isolation Forest (primary) and LOF fitted on NORMAL training rows only; threshold = 95th percentile of
+  NORMAL *validation* scores. A rule layer (`AnomalyInterpreter`) then names the likely cause (congestion, flood-like,
+  legitimate burst, degradation) with the numbers that triggered it. An anomaly score alone does **not** prove an attack.
+* **Congestion prediction** – Logistic Regression, Random Forest, XGBoost vs baselines (persistence, utilisation > 80 %,
+  rising-utilisation trend), thresholds chosen on validation runs, scored also on *not-yet-congested* seconds, with onsets
+  warned and warning lead time. Latency, CPU time, memory and model size are measured.
+
+### 3.7 Backend (`netguard/backend/`) — `python -m netguard serve`
+Loads `models/*.joblib` and serves the recorded runs and live data. Every record is labelled `source: "replay"` (historical)
+or `source: "live"`. Predictions are withheld (`available: false`) until 30 s of history exist.
+Stores live records and alerts in SQLite (`data/backend/netguard.db`).
+
+### 3.8 Live mode (`python -m netguard live <scenario>`)
+Runs a **real** Mininet scenario and, once per second, posts the measurements to `POST /api/ingest`
+(`experiments/livefeed.py`). The live reader (`livepackets.py`) reproduces the offline TShark/NFStream signals; each second is
+posted ~4 s after it ends because the flow definition needs each flow's last packet. After the run the experiment is also
+saved and the live values are compared with the offline ones (`checks.live_vs_offline` in its metadata).
+
+### 3.9 Dashboard (`frontend/`)
+**Historical replay** (the 15 recorded runs; held-out `test` runs are marked as unseen by the models) and **Live monitoring**
+(real-time stream, or a *past live session* played back). Panels: overview, throughput/utilisation, latency/queue/loss,
+flows and connections, protocol mix, congestion probability with the 30 s window, anomaly score with the reason it was flagged,
+alerts, and a Model performance tab with the real held-out metrics. Banners always say whether data is historical or live.
+
+---------------------------------------------------------------------------------------------------------------------
+
+## 4. Repository map (what every file does)
+
+### Root
+| Path | Purpose |
+|---|---|
+| `README.md`, `docs/RUN_GUIDE.md` | this explanation and the step-by-step commands |
+| `requirements.txt` | pinned Python dependencies (Phase 1–6) |
+| `pytest.ini` | tests config; integration tests are opt-in (`-m integration`) |
+| `.gitignore` | excludes `.venv`, `data/*` (except calibration), `models/`, `logs/`, `node_modules/` |
+| `NetGuard AI — Project Documentation.pdf` | original design document |
+
+### `configs/` – everything is configuration driven
+| File | Purpose |
+|---|---|
+| `topology.yaml` | hosts per side (4), subnet `10.0.0.0/24`, switch names, OVS fail mode |
+| `links.yaml` | bottleneck (10 Mbit/s, 20 ms, 50-packet queue) and access (100 Mbit/s) links |
+| `traffic.yaml` | iperf3/HTTP/DNS/ping/hping3 settings and safety limits |
+| `scenarios/*.yaml` | one file per scenario (see §3.2) |
+| `labeling.yaml` | congestion definition (90 %, 1 %, 3 s, 30 s horizon) and the X calibration method |
+| `experiments/phase2.yaml` | the campaign: 5 scenarios × 3 repetitions, seeds, collectors, capture and validation options |
+
+### `netguard/` – the Python package
+| Module | Purpose |
+|---|---|
+| `__main__.py`, `cli.py` | the `python -m netguard <command>` entry point |
+| `exceptions.py` | `NetGuardError`, `ConfigError`, `TopologyError`, `TrafficError` |
+| `config/` | typed, validated models and YAML loader for topology, links, traffic (`environment.py`, `loader.py`) |
+| `utils/` | `validation.py` (YAML checking helpers), `system.py` (pre-flight checks), `logging_setup.py` |
+| `topology/dumbbell.py`, `tc.py` | the Mininet dumbbell; `tc` netem + tbf command builders and parsers |
+| `scenarios/` | scenario models (`models.py`), per-pattern options (`options.py`), loader, one-shot runner |
+| `traffic/` | `patterns.py` + `planner.py` (pure, seeded planning), `commands.py` (argv builders, iperf3 JSON parsing), `executor.py` (runs a plan on Mininet hosts), `events.py`, `types.py` |
+| `traffic/workers/` | Python HTTP and DNS servers/clients run inside Mininet hosts |
+| `experiments/config.py` | campaign and labelling configuration models |
+| `experiments/orchestrator.py` | runs experiments, statuses, resume, auto-calibration |
+| `experiments/timeline.py` | the shared 1 s clock |
+| `experiments/lifecycle.py` | clean start/end of Mininet and OVS (`mn -c` equivalent) with verification |
+| `experiments/collectors/*` | the collectors listed in §3.3 (`base.py` has the common thread/health logic) |
+| `experiments/labels.py` | ground-truth congestion labels (pure functions) |
+| `experiments/calibration.py`, `postprocess.py` | X calibration; relabelling stored runs |
+| `experiments/dataset.py` | per-second table assembly, Parquet writer, metadata, schema validation, `dataset build` |
+| `experiments/report.py` | `results/validation_report.md` |
+| `experiments/livefeed.py` | per-second live samples → backend; live-vs-offline comparison |
+| `experiments/cli.py` | `experiment …`, `live`, `dataset …` commands |
+| `prep/` | `features.py`, `validate.py`, `splits.py`, `pipeline.py`, `cli.py` (Phase 3) |
+| `ml/` | `common.py` (data loading, metrics, resource profile), `classification.py`, `anomaly.py`, `congestion.py`, `run.py`, `cli.py` |
+| `backend/` | `app.py` (REST + WebSockets), `inference.py`, `replay.py`, `live.py`, `db.py` (SQLite), `cli.py` |
+
+### `frontend/`
+`src/App.tsx` (layout, state, playback, live socket), `api.ts` (backend client), `types.ts`, `lib.ts` (helpers),
+`components/Charts.tsx`, `ModelPerformance.tsx`, `ui.tsx`; `vite.config.ts` proxies `/api` and `/ws` to port 8000.
+
+### `tests/`
+`unit/` (≈ 450 tests, no root needed) and `integration/` (real Mininet, root, opt-in). The unit tests use small synthetic
+tables only to check code logic; they are never used as experimental data.
+
+### Generated (mostly not committed)
+`data/raw|processed|metadata|features|live|backend`, `models/*.joblib`, `results/*.md|json`, `logs/`.
+
+---------------------------------------------------------------------------------------------------------------------
+
+## 5. Data layout and schemas
+
+```
+data/metadata/<experiment_id>.json   config, seeds, timings, status, checks, errors   (+ calibration.json, tracked)
+data/raw/<experiment_id>/            interface|queue|connections|resources|probe .parquet, flows.parquet, protocol_hierarchy.txt
+data/processed/<experiment_id>.parquet   one row per second: features of the measurements + labels
+data/processed/dataset.parquet           successful runs only (python -m netguard dataset build)
+data/features/features.parquet           model input table with `split`, plus scaler.joblib and feature_columns.json
+data/live/                           real live runs (same layout)           data/backend/netguard.db   alerts + live records
+models/                              classification_*, anomaly_*, congestion_*  .joblib
 ```
 
-```bash
-cd NetGuardAI                   # wherever you copied this repository inside the VM
-python3 -m venv --system-site-packages .venv      # system site-packages: the apt-installed `mininet` module
-.venv/bin/pip install -r requirements.txt
-```
+Per-second table columns (selection): identifiers (`experiment_id`, `scenario`, `repetition`, `seed`, `second`, `timestamp_s`,
+`experiment_status`); interface (`fwd_/rev_` throughput, pps, utilisation); queue (`*_queue_backlog_bytes/packets`,
+`*_queue_delay_ms`, `*_queue_drops_per_s`, `*_tc_loss_pct`); probe (`rtt_mean_ms`, `jitter_ms`, `probe_loss_pct`); `active_connections`,
+`tcp_retransmissions`; `cpu_percent`, `ram_percent`; `tshark_*` protocol counts; `nf_active_flows`, `nf_new_flows`; summaries
+`throughput_mbps`, `utilisation_pct`, `queue_delay_ms`, `loss_pct`; labels `scenario_label`, `current_congestion`,
+`future_congestion`, `time_to_congestion`, `future_label_available`, `labels_status`.
 
-Python ≥ 3.10 is required by the pinned dependencies (Ubuntu 22.04 or newer). Dependencies: PyYAML, Scapy, pytest
-(pip, pinned in `requirements.txt`); Mininet, Open vSwitch, iperf3, hping3, iproute2 (`tc`), ethtool (apt).
+Utilisation uses `ip -s link` bytes, which include the 14-byte Ethernet header, so a saturated 10 Mbit/s link reads about 100.9 %.
 
-## Running
+---------------------------------------------------------------------------------------------------------------------
 
-Anything that does not need Mininet works on any OS (also on Windows):
+## 6. Backend API
 
-```bash
-python -m netguard validate                      # validate every YAML file and plan every scenario
-python -m netguard list
-python -m netguard plan ramp --events            # dry run: show the schedule and planned load
-python -m netguard plan random --seed 7 --json
-```
+| Method and path | Returns |
+|---|---|
+| `GET /api/health` | status, models in use, number of replay runs |
+| `GET /api/models` | held-out evaluation results of every model and baseline |
+| `GET /api/data-summary` | the Phase 3 preparation report |
+| `GET /api/runs` | the 15 recorded runs (scenario, split, `seen_by_models`, `historical: true`) |
+| `GET /api/runs/{id}/timeline` | every second: metrics, predictions, ground truth (separate) and alerts |
+| `GET /api/runs/{id}/summary` | counts of flagged seconds, warnings and alerts |
+| `WS  /ws/replay/{id}?speed=10` | streams a recorded run, each message marked historical |
+| `POST /api/ingest` | one live sample (missing metrics = `null`); returns predictions and alerts |
+| `GET /api/live/records`, `/api/live/streams` | stored live samples and the list of past live sessions |
+| `WS  /ws/live` | pushes each ingested live record |
+| `DELETE /api/live/{stream_id}` | resets a live stream's history |
+| `GET /api/alerts?source=live|replay` | stored alerts |
+| `GET /api/recommendations` | suggested actions per cause (advice only) |
 
-Inside the VM, as root (`sudo`), using the venv's Python:
+Interactive documentation: `http://127.0.0.1:8000/docs`.
 
-```bash
-sudo .venv/bin/python -m netguard topology --pingall --cli       # build + shape + verify, then Mininet CLI
-sudo .venv/bin/python -m netguard run normal --results-json /tmp/normal.json
-sudo .venv/bin/python -m netguard run ramp --duration 120        # shorter run for a quick check
-sudo .venv/bin/python -m netguard run degraded --loss-pct 5      # CLI link overrides (also: --bandwidth-mbps, --delay-ms)
-```
+---------------------------------------------------------------------------------------------------------------------
 
-`run` builds the network, starts the planned traffic once and tears everything down. It records no dataset or
-labels; that is the Phase 2 orchestrator. If a run is interrupted, clean up with `sudo mn -c`.
+## 7. Design decisions and limitations
 
-## Testing
-
-Unit tests (no Mininet, no root, any OS):
-
-```bash
-python -m pytest
-```
-
-Integration test (Ubuntu VM, root; builds the real topology, checks connectivity, OVS, tc bottleneck settings and
-TCP/UDP/HTTP/DNS/ping generation):
-
-```bash
-sudo mn -c
-sudo .venv/bin/python -m pytest -m integration tests/integration -v -s -rs
-```
-
-Without root, Linux, Mininet or a running Open vSwitch the integration tests are skipped and `-rs` prints why.
-
-## Notes and known limits
-
-* Traffic rates are *application payload* rates; wire rates are a few percent higher. The RAMP default
-  `onset_load: 1.05` crosses the bottleneck capacity at 60 s *as planned load*; the actual measured congestion onset
-  must be checked against measurements in Phase 2 (the congestion label uses utilisation, queue delay and loss).
-* hping3 sends UDP to a port with no listener; the receiving kernel answers with rate-limited ICMP "port
-  unreachable" packets (small and expected).
-* iperf3 servers are started per event just before the client; HTTP and DNS servers once per destination host. If
-  worker start-up is slow on the VM, raise `executor.server_start_lead_s` in `configs/traffic.yaml`.
-* The pinned versions in `requirements.txt` were the ones the unit tests were run with.
+* **Why a custom dataset:** the 30-second congestion target needs queue delay, utilisation and a known bottleneck, which public
+  intrusion datasets (UNSW-NB15, CICIDS2017) do not contain. They remain optional supplementary benchmarks.
+* **Anomaly detection flags FLASH_CROWD.** Stage 1 flags 100 % of that legitimate burst on the test run; the rule layer only
+  partly separates it (rule agreement with the true scenario ≈ 50 %, RAMP is explained as "flood-like" because it is also UDP).
+* **Few congestion onsets.** 15 runs give about 6 onsets per split, so prediction metrics are tentative.
+* **Loss in the congestion label** is the `tc` drop percentage (queue overflow plus netem random loss); probe loss is stored
+  but too coarse (5 probes/s) to label with. This is a modelling choice, documented in `labels.py`.
+* **Live mode lags ≈ 4 s** (flow look-ahead) and needs the models' 30 s history before predicting.
+* **Live flow counts** use the offline NFStream definition; SYN counts attribute SYNs to the second they are seen rather than
+  the flow start second. The live-vs-offline report quantifies the difference per run.
+* **One VM, one topology, one bottleneck.** Results do not claim to generalise to other networks.
+* **Ubuntu's AppArmor profile for tshark** cannot enter other users' directories and rejects signals from other processes, so the capture is written to a
+  root-owned temp folder and bounded with `-a duration`.
+* The VM is assumed dedicated: Mininet cleanup (`mn -c`) removes **all** Open vSwitch bridges.
