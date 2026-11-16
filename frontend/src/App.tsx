@@ -2,12 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, openLiveSocket } from "./api";
 import { AnomalyChart, CongestionChart, FlowsChart, LatencyChart, ProtocolChart, ResourceChart, ThroughputChart } from "./components/Charts";
 import { ModelPerformance } from "./components/ModelPerformance";
+import { Space3D } from "./components/Space3D";
 import { Card, Empty, Kpi, Pill } from "./components/ui";
 import { SEVERITY_TONE, TONE, condition, num, pct, toPoint } from "./lib";
 import type { AlertItem, LiveSession, ModelsResponse, MonitorRecord, RunInfo, Timeline } from "./types";
 
 type Mode = "replay" | "live";
-type Tab = "monitor" | "performance";
+type Tab = "monitor" | "performance" | "space3d";
 
 export default function App() {
   const [mode, setMode] = useState<Mode>("replay");
@@ -119,9 +120,9 @@ export default function App() {
             ))}
           </nav>
           <nav className="flex gap-1 text-sm">
-            {(["monitor", "performance"] as Tab[]).map((t) => (
+            {(["monitor", "performance", "space3d"] as Tab[]).map((t) => (
               <button key={t} onClick={() => setTab(t)} className={`rounded-md px-3 py-1 ${tab === t ? "bg-blue-600" : "text-slate-300 hover:text-white"}`}>
-                {t === "monitor" ? "Monitoring" : "Model performance"}
+                {t === "monitor" ? "Monitoring" : t === "performance" ? "Model performance" : "3D view"}
               </button>
             ))}
           </nav>
@@ -139,6 +140,8 @@ export default function App() {
         {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-800 ring-1 ring-red-200">{error}</div>}
 
         {tab === "performance" && <ModelPerformance models={models} />}
+
+        {tab === "space3d" && <Space3D />}
 
         {tab === "monitor" && (
           <>

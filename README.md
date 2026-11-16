@@ -294,3 +294,36 @@ Interactive documentation: `http://127.0.0.1:8000/docs`.
 * **Ubuntu's AppArmor profile for tshark** cannot enter other users' directories and rejects signals from other processes, so the capture is written to a
   root-owned temp folder and bounded with `-a duration`.
 * The VM is assumed dedicated: Mininet cleanup (`mn -c`) removes **all** Open vSwitch bridges.
+
+---------------------------------------------------------------------------------------------------------------------
+
+## 8. Live attack demo (attack a sample website, watch it get detected)
+
+A lightweight, two-part demo built entirely from this repo's own code: a real website hosted inside the
+test network (it serves a hardcoded `503` error page for the flood's own window, t=120s–180s, so the
+failure is always clearly visible), a real UDP flood against it, and the project's own trained models
+(XGBoost classifier, Isolation Forest anomaly detector, Logistic Regression congestion predictor)
+scoring it live. Full walkthrough, timing table and talking points:
+[`docs/DEMO_GUIDE.md`](docs/DEMO_GUIDE.md).
+
+With the backend already running (`python -m netguard serve`):
+
+```bash
+# 1. Part 1 - show the site fail, undefended (no mitigation):
+sudo .venv/bin/python scripts/demo_attack.py --duration 200
+```
+
+```bash
+# 2. Part 2 - show it detected AND mitigated: the moment the model flags the flood as
+#    flood-like/congestion, the attacker's link is rate-limited for real with `tc`, and the
+#    site should recover while the flood is still running:
+sudo .venv/bin/python scripts/demo_attack.py --duration 200 --mitigate
+```
+
+```bash
+# 3. In a second terminal, for either run - watch the website's real health live:
+tail -f /tmp/netguard_demo/site_probe.log
+```
+
+Open [`demo/dashboard.html`](demo/dashboard.html) directly in a browser for the live ML detection view
+(it connects to the backend's `/ws/live` WebSocket; no build step needed).

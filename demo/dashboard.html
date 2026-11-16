@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NetGuard AI — Live Attack Detection</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --bg:#0b1120; --panel:#131c31; --panel2:#1a2540; --border:#243357;
+    --text:#e6ecff; --muted:#8696bf; --green:#34d399; --amber:#fbbf24; --red:#f87171; --blue:#60a5fa;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:"Segoe UI",Arial,sans-serif;padding:20px}
+  h1{font-size:20px;margin:0 0 2px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 18px}
+  .row{display:flex;gap:14px;flex-wrap:wrap}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px;flex:1;min-width:230px}
+  .conn{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);float:right}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--red)}
+  .dot.ok{background:var(--green)}
+  .dot.warm{background:var(--amber)}
+
+  #banner{border-radius:12px;padding:22px;text-align:center;margin-bottom:16px;border:1px solid var(--border);
+          transition:background .3s,border-color .3s}
+  #banner h2{margin:0 0 6px;font-size:26px}
+  #banner p{margin:0;color:var(--muted);font-size:14px}
+  .b-normal{background:linear-gradient(135deg,#0f2e22,#122034)}
+  .b-normal h2{color:var(--green)}
+  .b-warn{background:linear-gradient(135deg,#3a2e05,#122034)}
+  .b-warn h2{color:var(--amber)}
+  .b-attack{background:linear-gradient(135deg,#3a0f12,#122034)}
+  .b-attack h2{color:var(--red)}
+  .b-wait{background:var(--panel)}
+  .b-wait h2{color:var(--muted)}
+
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px}
+  .tile{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px}
+  .tile .v{font-size:22px;font-weight:700}
+  .tile .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+
+  .label{font-size:12px;color:var(--muted);margin-bottom:6px}
+  canvas{width:100%;height:120px;display:block}
+
+  .barwrap{background:var(--panel2);border-radius:6px;height:10px;overflow:hidden;margin-top:4px}
+  .bar{height:100%;background:var(--blue)}
+
+  table{width:100%;font-size:12px;border-collapse:collapse}
+  td,th{padding:4px 6px;text-align:left;border-bottom:1px solid var(--border)}
+
+  #alerts{max-height:220px;overflow-y:auto;font-size:12px}
+  .alert{padding:8px 10px;border-radius:8px;margin-bottom:6px;border-left:4px solid var(--blue);background:var(--panel2)}
+  .alert.high{border-left-color:var(--red)}
+  .alert.medium{border-left-color:var(--amber)}
+  .alert.low{border-left-color:var(--muted)}
+  .alert .t{color:var(--muted);font-size:11px}
+
+  footer{color:var(--muted);font-size:11px;margin-top:18px;line-height:1.5}
+  code{background:var(--panel2);padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+  <span class="conn"><span class="dot" id="dot"></span><span id="connText">connecting…</span></span>
+  <h1>NetGuard AI — Live Attack Detection</h1>
+
+  <div id="banner" class="panel b-wait">
+    <h2 id="bannerTitle">Waiting for a live session…</h2>
+    <p id="bannerSub">Run <code>sudo .venv/bin/python scripts/demo_attack.py --duration 200</code> in the Ubuntu VM,
+       with the backend (<code>python -m netguard serve</code>) already running.</p>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="row">
+    <div class="panel" style="flex:2;min-width:380px">
+      <div class="label">Utilisation % (blue) and anomaly score (red), last 90 s</div>
+      <canvas id="chart" width="760" height="120"></canvas>
+    </div>
+    <div class="panel" style="min-width:260px">
+      <div class="label">Traffic classification</div>
+      <div id="classLabel" style="font-size:18px;font-weight:700;margin-bottom:8px">—</div>
+      <table id="classTable"></table>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:14px">
+    <div class="panel" style="flex:2;min-width:380px">
+      <div class="label">Alerts</div>
+      <div id="alerts"><span style="color:var(--muted);font-size:12px">none yet</span></div>
+    </div>
+    <div class="panel" style="min-width:260px">
+      <div class="label">Session</div>
+      <table id="sessionTable"></table>
+    </div>
+  </div>
+
+<script>
+const BACKEND_WS = "ws://127.0.0.1:8000/ws/live";
+const HISTORY_S = 90;
+let series = []; // {t, util, score}
+let streamId = null, seconds = 0, predictedSeconds = 0, anomalySeconds = 0, warnSeconds = 0;
+
+const dot = document.getElementById("dot"), connText = document.getElementById("connText");
+const banner = document.getElementById("banner"), bannerTitle = document.getElementById("bannerTitle"),
+      bannerSub = document.getElementById("bannerSub");
+const statsEl = document.getElementById("stats");
+const classLabel = document.getElementById("classLabel"), classTable = document.getElementById("classTable");
+const alertsEl = document.getElementById("alerts");
+const sessionTable = document.getElementById("sessionTable");
+const canvas = document.getElementById("chart"), ctx = canvas.getContext("2d");
+
+function fmt(v, d=1, unit="") { return (v === null || v === undefined || Number.isNaN(v)) ? "—" : v.toFixed(d) + unit; }
+
+function setConn(state) { // "connecting" | "ok" | "down"
+  dot.className = "dot" + (state === "ok" ? " ok" : state === "connecting" ? " warm" : "");
+  connText.textContent = state === "ok" ? "live" : state === "connecting" ? "connecting…" : "disconnected — retrying…";
+}
+
+function setBanner(cls, title, sub) {
+  banner.className = "panel " + cls;
+  bannerTitle.textContent = title;
+  bannerSub.textContent = sub || "";
+  bannerSub.style.display = sub ? "" : "none";
+}
+
+function tile(label, value) {
+  return `<div class="tile"><div class="v">${value}</div><div class="l">${label}</div></div>`;
+}
+
+function render(rec) {
+  const m = rec.metrics || {}, p = rec.predictions || {};
+  seconds++;
+  streamId = rec.stream_id;
+
+  statsEl.innerHTML = [
+    tile("Utilisation", fmt(m.utilisation_pct, 0, "%")),
+    tile("Throughput", fmt(m.throughput_mbps, 1, " Mbps")),
+    tile("Queue delay", fmt(m.queue_delay_ms, 1, " ms")),
+    tile("Loss", fmt(m.loss_pct, 1, "%")),
+    tile("RTT", fmt(m.rtt_mean_ms, 1, " ms")),
+    tile("Active conns", fmt(m.active_connections, 0)),
+  ].join("");
+
+  let score = null;
+  if (!p.available) {
+    setBanner("b-wait", "Warming up…", p.reason || "need ~30 s of history before the models can predict.");
+    classLabel.textContent = "—"; classTable.innerHTML = "";
+  } else {
+    predictedSeconds++;
+    score = p.anomaly.score;
+    const flagged = p.anomaly.flagged, warn = p.congestion.warning;
+    if (flagged) anomalySeconds++;
+    if (warn) warnSeconds++;
+
+    if (flagged && warn) {
+      setBanner("b-attack", "⚠ ATTACK DETECTED — congestion imminent", "");
+    } else if (flagged) {
+      setBanner("b-attack", `⚠ Anomaly detected — ${p.anomaly.kind || "unclassified"}`,
+        (p.anomaly.reasons || []).join("; ") || "unusual traffic pattern on the shared link.");
+    } else if (warn) {
+      setBanner("b-warn", "Congestion warning",
+        `${(p.congestion.probability*100).toFixed(0)}% probability of congestion in the next ${p.congestion.horizon_s}s.`);
+    } else {
+      setBanner("b-normal", "Normal", "no anomaly flagged, no congestion predicted.");
+    }
+
+    classLabel.textContent = p.classification.label;
+    classTable.innerHTML = Object.entries(p.classification.probabilities)
+      .sort((a,b)=>b[1]-a[1])
+      .map(([k,v]) => `<tr><td>${k}</td><td style="text-align:right">${(v*100).toFixed(0)}%</td>
+        <td style="width:50%"><div class="barwrap"><div class="bar" style="width:${(v*100).toFixed(0)}%"></div></div></td></tr>`)
+      .join("");
+  }
+
+  series.push({t: seconds, util: m.utilisation_pct, score});
+  if (series.length > HISTORY_S) series.shift();
+  drawChart();
+
+  (rec.alerts || []).forEach(a => {
+    const sev = (a.severity || "low");
+    const div = document.createElement("div");
+    div.className = "alert " + sev;
+    div.innerHTML = `<div>${a.kind ? "<b>" + a.kind + "</b> — " : ""}${a.reasons ? a.reasons.join("; ") :
+      (a.message || JSON.stringify(a))}</div><div class="t">second ${rec.second} · ${sev}</div>`;
+    if (alertsEl.firstChild && alertsEl.firstChild.textContent === "none yet") alertsEl.innerHTML = "";
+    alertsEl.prepend(div);
+    while (alertsEl.children.length > 30) alertsEl.removeChild(alertsEl.lastChild);
+  });
+
+  sessionTable.innerHTML = `
+    <tr><td>stream</td><td style="text-align:right">${streamId || "—"}</td></tr>
+    <tr><td>seconds seen</td><td style="text-align:right">${seconds}</td></tr>
+    <tr><td>predicted</td><td style="text-align:right">${predictedSeconds}</td></tr>
+    <tr><td>anomaly-flagged</td><td style="text-align:right">${anomalySeconds}</td></tr>
+    <tr><td>congestion warnings</td><td style="text-align:right">${warnSeconds}</td></tr>`;
+}
+
+function drawChart() {
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0,0,w,h);
+  ctx.strokeStyle = "#243357"; ctx.lineWidth = 1;
+  for (let i=0;i<=4;i++){ const y = h - (h*i/4); ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+  if (series.length < 2) return;
+  const step = w / (HISTORY_S - 1);
+  const start = HISTORY_S - series.length;
+
+  function plot(key, max, color) {
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+    let started = false;
+    series.forEach((pt, i) => {
+      const v = pt[key];
+      const x = (start + i) * step;
+      if (v === null || v === undefined) { started = false; return; }
+      const y = h - Math.min(1, v / max) * h;
+      if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
+    });
+    ctx.stroke();
+  }
+  plot("util", 100, "#60a5fa");
+  plot("score", 1, "#f87171");
+}
+
+function connect() {
+  setConn("connecting");
+  let ws;
+  try { ws = new WebSocket(BACKEND_WS); } catch (e) { setConn("down"); setTimeout(connect, 2000); return; }
+  ws.onopen = () => setConn("ok");
+  ws.onclose = () => { setConn("down"); setTimeout(connect, 2000); };
+  ws.onerror = () => ws.close();
+  ws.onmessage = (ev) => {
+    let msg; try { msg = JSON.parse(ev.data); } catch { return; }
+    if (msg.type === "record") render(msg);
+  };
+}
+connect();
+</script>
+</body>
+</html>
