@@ -1,175 +1,100 @@
-# NetGuard AI — Presentation Split for 4 Speakers
+# NetGuard AI — Presentation Topics for 4 Speakers
 
-Total time: **16 minutes (4 minutes each)**, plus questions. Every number below comes from the project's real results (`results/ml_results.md` and `docs/VIVA_DOCUMENTATION.md`, Part J).
+Total: **~20 minutes (about 5 minutes each)**, plus questions. The split follows the project pipeline
+(**network → measurement → models → live system**) and gives every speaker a **different** set of Computer
+Networks and ML topics, so nobody repeats anyone. All numbers are from the project's real results
+(`results/ml_results.md`).
 
-> Note: the slide table in the viva document adds up to about 18.5 minutes, although its title says 12–15. This split trims it to 16. If you only get 12–15 minutes, cut the "Problems solved" parts (marked *optional*) and shorten the demo to 2 minutes.
+## At a glance
 
-## The story in one line
-
-> "Networks jam. We built a virtual network, measured it every second, taught three kinds of AI models to recognise traffic, spot anomalies and warn 30 seconds before congestion, and show everything on a live dashboard — and we are honest about what is still tentative."
-
-## Who presents what
-
-| Speaker | Theme | Slides | Time |
+| Speaker | Theme | Main topics | 3D-view scenes to show |
 |---|---|---|---|
-| **Speaker 1** | The problem, the idea and the virtual network | 1, 2, 3, 4 | 4 min |
-| **Speaker 2** | The data: what we measure and how we label it honestly | 5, 6, 7 | 4 min |
-| **Speaker 3** | The AI models and the results | 8, 9, 12 (ML limits) | 4 min |
-| **Speaker 4** | The live system, the demo and the conclusion | 10, 11, 12 (future), 13 | 4 min |
-
-The order follows the pipeline: **simulate → measure → label → learn → serve → show**. Each speaker hands the audience to the next one with a fixed sentence (in bold at the end of each part).
+| **1** | The problem, the network and the traffic | Real-world problem · pipeline architecture · dumbbell topology · bandwidth/delay/loss · IP addressing · TCP vs UDP · HTTP/DNS/ICMP · the 5 scenarios | Experiment topology · Handshake vs. SYN flood |
+| **2** | How congestion is created, measured and labelled | netem + tbf · token bucket · drop-tail queue · bufferbloat · MTU/offloads · the 7 collectors · active vs passive · flows (5-tuple) · congestion rule · X = 29 ms · leakage-free splits | Queue & packet drop · Congestion building up |
+| **3** | The machine learning | 105 features and how they're built · top-12 features · the 3 jobs · why XGBoost / Isolation Forest / Logistic Regression · results and honest limits | Isolation Forest · Logistic Regression · Traffic classification |
+| **4** | The live system, the demo and the future | Backend and dashboard · live pipeline · **attack + mitigation demo (Parts 1 and 2)** · problems solved · limitations · future work (SDN, ECN/AQM, QUIC, IPv6) | Live attack-demo topology · Attack & mitigation |
 
 ---
 
-# Speaker 1 — The problem, the idea and the virtual network (4 min)
+## Speaker 1 — The problem, the network and the traffic (~5 min)
 
-**Owns:** viva Parts A and C1, and the architecture diagram in the README.
+1. **The real-world problem:** networks jam suddenly; a crowd and a flood attack look alike; admins need a warning
+   *before*, not after.
+2. **What we built (one sentence per stage):** simulate → measure → label → learn → serve → show.
+3. **The virtual network:** dumbbell topology (h1–h4 ↔ s1 ═ s2 ↔ h5–h8), 100 Mbit/s access links, one 10 Mbit/s
+   bottleneck, 20 ms one-way delay → ~40 ms RTT. IPv4 `10.0.0.0/24` addressing.
+4. **Transport and application protocols:** TCP (handshake, retransmission, congestion control) vs UDP (none — which is
+   why floods are UDP). HTTP, DNS and ICMP traffic we generate.
+5. **The 5 scenarios:** NORMAL, RAMP, FLASH_CROWD, UDP_FLOOD, DEGRADED — 5 × 3 runs × 300 s.
 
-## Slide 1 — Title and problem (1 min)
-- Networks get congested: queues fill, packets are dropped, delay rises, users suffer.
-- An administrator has two problems: **(1)** know *before* it happens; **(2)** tell a harmless crowd from an attack.
-- Say: "A sudden jump in traffic can be a popular event or a flood attack. They look similar, and the response is different."
+*Docs:* `docs/cn_concepts/01-topology-and-links.md` and the first half of `02-switching-and-transport.md`.
+**Handover:** *"We now have a network that can jam on purpose. Next: how we make it jam, measure it, and know for
+certain when it's congested."*
 
-## Slide 2 — Goal and contributions (1 min)
-- Three AI tasks: **traffic classification**, **anomaly detection**, **congestion prediction 30 seconds ahead**.
-- Plus: a **live dashboard**, and a **reproducible pipeline** (one command per stage, fixed random seeds).
-- Say why we built our own data: public datasets do not have per-second queue delay and loss together with a known bottleneck, so we cannot label "congestion" honestly from them.
+## Speaker 2 — Traffic control, measurement and ground truth (~5 min)
 
-## Slide 3 — Architecture (1 min)
-- Show the README diagram and read it left to right: **simulate → measure → label → features → models → backend → dashboard**.
-- One sentence each: Mininet makes the network; collectors measure; rules give the ground truth; scikit-learn / XGBoost learn; FastAPI serves; React shows.
+1. **How congestion is created:** `netem` (delay/loss) + `tbf` (token bucket) on every link; drop-tail queue —
+   50 packets ≈ 60 ms; bufferbloat; why we disable TSO/GSO/GRO; 1472-byte packets avoid fragmentation.
+2. **How it's measured:** the 7 collectors (`ip`, `tc`, `ss`, ping, TShark, NFStream, psutil) mapped to real monitoring
+   ideas; active vs passive measurement; flows and the 5-tuple (NetFlow/IPFIX); one shared clock; RFC 3550 jitter.
+3. **How it's labelled:** congested = utilisation ≥ 90 % AND (queue delay ≥ X **or** loss > 1 %) for 3 s; **X = 29 ms**
+   calibrated from NORMAL runs; congestive loss vs random loss (the DEGRADED scenario).
+4. **No cheating:** split by run (rep 1 train / 2 validation / 3 test), past-only features, first 30 s excluded.
 
-## Slide 4 — Virtual network and scenarios (1 min)
-- **Dumbbell topology:** 2 Open vSwitch switches, 4 hosts on each side, one shared **bottleneck of 10 Mbit/s**, 20 ms one-way delay, a 50-packet queue; access links 100 Mbit/s.
-- **Five scenarios:** NORMAL, RAMP (load rises step by step), FLASH_CROWD (many legitimate users at once), UDP_FLOOD (attack-like), DEGRADED (extra 60 ms delay and 3 % loss).
-- **Experiment size:** 5 scenarios × 3 repetitions × 300 s = **15 runs**, seeds 42, 43, 44.
+*Docs:* `docs/cn_concepts/03-queueing-and-congestion.md` and `04-measurement-and-monitoring.md`.
+**Handover:** *"Clean, honestly labelled data. My colleague will show what the models learned from it."*
 
-**Handover:** *"We now have a network that can jam on purpose. My colleague will explain how we measure it and how we know, without cheating, when it is jammed."*
+## Speaker 3 — The machine learning (~5 min)
 
-### Speaker 1 — likely questions
-- Why simulate instead of using real traffic? → Control: we know the ground truth and can repeat runs.
-- Why a bottleneck of only 10 Mbit/s? → It makes congestion easy to create on a laptop-sized VM; the method does not depend on the size.
-- Is it only one topology? → Yes. This is a stated limitation.
+1. **The 105 features:** 15 raw "vitals" → 5-second mean/max/std/slope → 5/10/30-second look-backs → a past-only
+   congestion flag; protocol shares.
+2. **The top 12:** `nf_active_flows_mean5`, `share_udp`, `loss_pct_std5`, the four RTT variants, `share_dns`,
+   `nf_new_flows_mean5`, `share_icmp`, … — and why delay is the earliest symptom.
+3. **Three jobs, three models, and why:**
+   - Classification → **XGBoost** (RF is 0.7 pt more accurate, ~230× slower).
+   - Anomaly detection → **Isolation Forest** (precision 0.97, recall 1.00; ~12 % false alarms).
+   - Congestion prediction → **Logistic Regression** (F1 0.65 vs baseline 0.33; warned before 5 of 6 onsets).
+4. **Honest limits:** only 6 test congestion onsets; the anomaly stage flags legitimate FLASH_CROWD; the rule layer agrees
+   with the true scenario ~50 % of the time.
 
----
+*Docs:* `docs/ml-explanations/01-models.md`, `02-features.md`, `docs/FEATURES.md`.
+**Handover:** *"Models are only useful if someone can see them working. Over to the live system and the demo."*
 
-# Speaker 2 — The data: measurement, ground truth and avoiding cheating (4 min)
+## Speaker 4 — The live system, the demo and the future (~5 min)
 
-**Owns:** viva Parts B3, C3, C4, C6, D4, D5, D6 and `docs/FEATURES.md`.
+1. **The system:** FastAPI backend + WebSocket, the 4-tab dashboard, live pipeline (live-vs-offline agreement 100 %).
+2. **Demo Part 1 — the site fails:** `sudo .venv/bin/python scripts/demo_attack.py --duration 200` → real UDP flood →
+   the sample website serves a `503` page; dashboard shows **ATTACK DETECTED**.
+3. **Demo Part 2 — detected and mitigated:** same command with `--mitigate` → the model flags the flood, the attacker is
+   rate-limited with `tc`, the `503` lifts within seconds.
+4. **Problems we solved (pick one):** AppArmor blocking TShark (`[Errno 13]`), or the live/offline flow-definition mismatch.
+5. **Future work:** SDN/OpenFlow controller for network-level mitigation, ECN + CoDel instead of drop-tail, QUIC/TLS traffic,
+   IPv6, true multi-source DDoS. **Conclusion:** what works, what is tentative.
 
-## Slide 5 — What we measure (1.5 min)
-- Every **second**, on one shared clock, seven kinds of collectors run: `ip -s link` (throughput, utilisation), `tc -s qdisc` (queue backlog, delay, drops), `ss` (connections, retransmissions), **ping** every 0.2 s (round-trip time, jitter, loss), **TShark** (packets by protocol), **NFStream** (flows), **psutil** (CPU/RAM of the VM).
-- 52 raw measurements → **15 base signals** → **105 model features** (current value, 5-second mean/max/std/slope, and 5/10/30-second lags). Result: **4,500 rows**.
-- Say: "VM CPU and RAM are measured but are not model inputs. They describe the test computer, not the network, so they would give the models false hints."
-
-## Slide 6 — Ground truth: what "congested" means (1.5 min)
-- **Rule:** utilisation ≥ 90 % **and** (queue delay ≥ X **or** loss > 1 %), holding for ≥ 3 seconds in a row.
-- **X = 29 ms**, not guessed: it was calibrated from the NORMAL runs (99.9th percentile) and frozen in `data/metadata/calibration.json`.
-- **Onset** = first second of an episode. **Label to predict:** "a new congestion onset happens in the next 30 seconds".
-- Missing data is never filled with zeros; a second with unknown data stays "unknown".
-
-## Slide 7 — Avoiding cheating (1 min)
-- **Split by run, never by row:** repetition 1 = train, 2 = validation, 3 = test. Neighbouring seconds are almost identical, so a random split would leak the answer.
-- Features look only at the **past**. The first 30 s of each run have no prediction (not enough history) and are excluded; the last 30 s have no label.
-- The scaler is fitted on training data only. The true "currently congested" flag needs the next 2 s, so it is not an input; a past-only `congested_causal` replaces it.
-- *Optional (15 s):* **Problem solved —** Ubuntu's AppArmor blocked TShark from writing into our folders (`[Errno 13]`); we found it in the kernel log and captured into a root-owned temp folder.
-
-**Handover:** *"So we have clean, honestly labelled data. Over to my colleague for what the AI learned from it."*
-
-### Speaker 2 — likely questions
-- Why X = 29 ms? → Calibrated on NORMAL data, then frozen, so the threshold is not tuned on the results.
-- Why three repetitions only? → One-day deadline and a VM with 8 cores; this limits the number of test onsets (see Speaker 3).
-- How do you know there is no leakage? → The rules on slide 7, and automatic checks in `netguard/prep/validate.py`.
+*Docs:* `docs/RUN_GUIDE.md` §8 and §10, `docs/DEMO_GUIDE.md`, `docs/cn_concepts/05-future-work.md`.
 
 ---
 
-# Speaker 3 — The AI models and the results (4 min)
+## Who answers which question
 
-**Owns:** viva Parts C5, D7, F and `results/ml_results.md`.
-
-## Slide 8 — Models (1.5 min)
-- **Traffic classification** (which scenario is this second?): Decision Tree, Random Forest, XGBoost.
-- **Anomaly detection, two stages:** Stage 1 Isolation Forest (and LOF for comparison), trained only on NORMAL traffic; the alarm threshold is the 95th percentile of NORMAL validation scores. Stage 2 is a rule-based interpreter that gives a reason ("flood-like", "crowd-like"...).
-- **Congestion prediction (next 30 s):** Logistic Regression, Random Forest, XGBoost, compared with **three simple baselines**: persistence, "utilisation > 80 %", and "utilisation trend".
-- Fixed settings, no heavy tuning; CPU only.
-
-## Slide 9 — Results on the held-out test runs (2 min)
-
-| Task | Result |
+| Topic of the question | Answered by |
 |---|---|
-| Classification | Random Forest **0.908** accuracy (XGBoost 0.901, Decision Tree 0.893). UDP_FLOOD is the hardest class (recall 0.60). |
-| Anomaly detection | Isolation Forest precision **0.97**, recall **1.00**, but **12.2 % false alarms** on NORMAL. |
-| Congestion (not-yet-congested seconds) | Logistic Regression precision **0.87**, recall 0.52, F1 **0.65**, warned before **5 of 6** onsets, mean lead ≈ 30 s. Baseline "utilisation > 80 %": F1 **0.33**. |
-| Speed | Logistic Regression ≈ 0.2 ms, XGBoost ≈ 0.4 ms, Random Forest ≈ 100 ms per prediction. |
+| Problem, topology, IP addressing, TCP/UDP, scenarios | Speaker 1 |
+| Queueing, tc, measurement tools, flows, labels, calibration, leakage | Speaker 2 |
+| Features, models, metrics, baselines, limits | Speaker 3 |
+| Backend, dashboard, live mode, the attack demo, future work | Speaker 4 |
 
-- Key sentence: "The simple Logistic Regression model beats the baselines, and the persistence baseline cannot warn early at all (recall 0)."
-- Most useful features: `nf_active_flows_mean5`, `share_udp`, `rtt_mean_ms_lag30`, `loss_pct_std5`, `rtt_mean_ms_lag5`.
+If it isn't yours: *"my colleague owns that part"* — and hand over. Never guess a number.
 
-## Slide 12 (ML part) — Honest limits (0.5 min)
-- The test set has only **6 congestion onsets** → "promising, not conclusive".
-- The anomaly stage flags **100 % of FLASH_CROWD**, which is legitimate traffic; the rule layer agrees with the true scenario only about 50 % of the time (RAMP is called "flood-like").
-- The first 30 s have no prediction, so part of the "30 s lead" is warm-up.
+## Everyone memorises these 8 numbers
 
-**Handover:** *"These models are only useful if someone can see them working in real time. My colleague will show the system and run the demo."*
+10 Mbit/s bottleneck · 15 runs · 4,500 rows × 105 features · X = 29 ms · 30 s horizon · RF 0.908 accuracy ·
+Logistic Regression F1 0.65 vs 0.33 baseline · 5 of 6 onsets warned.
 
-### Speaker 3 — likely questions
-- Why is Logistic Regression better than XGBoost here? → XGBoost is more precise (1.00) but misses more onsets (recall 0.36 vs 0.52). A likely reason is the small number of training positives, which favours a simple model; we did not test this explanation, so say "likely".
-- Why is anomaly detection so sensitive? → It is a first-stage filter trained on NORMAL only; anything different, even legitimate, is flagged.
-- Is 0.65 F1 good? → It is clearly above the baselines, but with 6 onsets we do not claim a general result.
+## Demo logistics (Speaker 4 leads)
 
----
-
-# Speaker 4 — The live system, the demo and the conclusion (4 min)
-
-**Owns:** viva Parts D8–D11, E, G and I (demo script).
-
-## Slide 10 — System and live demo (3 min)
-Architecture in one sentence: **FastAPI** backend + SQLite + WebSockets, **React** dashboard on port 5173 (backend on 8000). Historical replay is marked `source: "replay"`; real live data is marked `source: "live"`.
-
-**Demo (rehearse this exactly):**
-1. Backend and dashboard are already running. Open `http://127.0.0.1:5173`.
-2. *Historical replay →* RAMP **test** run, 10× speed. Pause at about second 58: congestion probability **95 %**, **WARNING**, and the onset comes at second **60**. The red shading is the ground truth.
-3. Switch to UDP_FLOOD: explanation "flood-like". Switch to FLASH_CROWD: "this is legitimate; our first stage flags it — a known limitation."
-4. *Model performance tab:* Logistic Regression F1 0.65 vs baseline 0.33, and read the caveat.
-5. *Live monitoring:* `sudo .venv/bin/python -m netguard live ramp --duration 150`; mention the 30 s warm-up and the ≈ 4 s display lag. If Mininet cannot start, play the stored **past live session** and say it is a real recording.
-
-*Optional (15 s):* **Problem solved —** the first live version disagreed with the offline one (63 % agreement) because "active flows" were counted differently; with the offline definition and a 4 s look-ahead the agreement is now **100 %** (150 samples, 0 failed).
-
-## Slide 12 (future part) — Future work (0.5 min)
-- More repetitions and topologies, to get more congestion onsets and a firmer result.
-- Teach the first stage to tell a flash crowd from a flood.
-- Test against public datasets as an external benchmark.
-
-## Slide 13 — Conclusion (0.5 min)
-- We built an end-to-end, reproducible system: virtual network, 15 real runs, 105 features, three model families, a live dashboard, ≈ 450 unit tests and 15 integration tests.
-- Warning before 5 of 6 test congestion onsets with a 0.65 F1 beats the baselines, **but** the result is tentative because the test set is small.
-- Close: "We report what works, and what does not."
-
-### Speaker 4 — likely questions
-- Is the live demo real? → Yes: a real Mininet run feeds the backend every second. Replay is clearly marked as historical.
-- Why a 4 s lag in live mode? → To tell which flows are still active, we must see each flow's last packet.
-- What if the network is different? → The models were trained on this topology only; a new network needs new data.
-
----
-
-# Teamwork notes
-
-## Answering questions together
-| Topic of the question | Who answers |
-|---|---|
-| Problem, topology, scenarios, why simulation | Speaker 1 |
-| Metrics, tools, labels, calibration, leakage, splits | Speaker 2 |
-| Models, metrics, baselines, results, limits | Speaker 3 |
-| Backend, dashboard, live mode, tests, demo problems | Speaker 4 |
-
-If a question is not yours, say "my colleague owns that part" and hand over. Do not guess a number: use the cheat sheet.
-
-## Everyone memorises (the 8 numbers)
-10 Mbit/s bottleneck · 15 runs · 105 features · 4,500 rows · X = 29 ms · 30 s horizon · RF accuracy 0.908 · Logistic Regression F1 0.65 vs baseline 0.33.
-
-## Rehearsal checklist
-1. Run the full presentation once with a timer; each person stops at 4 minutes.
-2. Speaker 4 starts backend and dashboard 10 minutes before and checks the past session plays.
-3. Speaker 1 switches the slides; speaker 4 owns the browser during the demo.
-4. Use the same words for the same things: **onset**, **horizon**, **held-out test runs**, **baseline**.
-5. Never say "the model predicts congestion perfectly". Say "promising, based on 6 test onsets".
+1. Ten minutes before: start the backend and the dashboard (`docs/RUN_GUIDE.md` §3); open the **Live attack demo** tab.
+2. Keep a terminal ready for `tail -f /tmp/netguard_demo/site_probe.log` so the audience sees `503`s appear.
+3. Backup if Mininet won't start: play a stored **past live session** from the Monitoring tab and say it's a recording.
+4. Speaker 1 drives the slides; Speaker 4 owns the browser and terminal during the demo.
+5. Ready-made decks are in `docs/presentations/`.
