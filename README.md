@@ -325,5 +325,8 @@ sudo .venv/bin/python scripts/demo_attack.py --duration 200 --mitigate
 tail -f /tmp/netguard_demo/site_probe.log
 ```
 
-Open [`demo/dashboard.html`](demo/dashboard.html) directly in a browser for the live ML detection view
-(it connects to the backend's `/ws/live` WebSocket; no build step needed).
+If the main frontend (section 6) is running, open `http://localhost:5173` and click its **"Live attack
+demo"** tab - the same dashboard, embedded, so every page of this project (monitoring, model
+performance, the 3D view, and the attack demo) lives behind one address. Otherwise open
+[`demo/dashboard.html`](demo/dashboard.html) directly in a browser (no build step needed; it connects to
+the backend's `/ws/live` WebSocket either way).

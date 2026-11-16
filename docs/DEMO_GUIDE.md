@@ -84,9 +84,12 @@ mitigated) - occasionally you may also see `TIMEOUT / UNREACHABLE` if the link i
 even the error page to get through in time.
 
 **Browser — the ML detection dashboard:**
-Open [`demo/dashboard.html`](../demo/dashboard.html) directly (double-click the file, or
-`file:///…/NetGuard_AI/demo/dashboard.html`). It connects straight to the backend's WebSocket
-(`ws://127.0.0.1:8000/ws/live`) — no build step, no dev server, nothing else to start. It will say
+If the main frontend is running (`npm run dev` inside `frontend/`), just open it at
+`http://localhost:5173` and click the **"Live attack demo"** tab in its top nav — the same dashboard,
+embedded, so you never have to leave the app or juggle browser tabs during class. Without the frontend
+running, open [`demo/dashboard.html`](../demo/dashboard.html) directly instead (double-click the file,
+or `file:///…/NetGuard_AI/demo/dashboard.html`) — it connects straight to the backend's WebSocket
+(`ws://127.0.0.1:8000/ws/live`), no build step or dev server required. Either way it will say
 "Waiting for a live session…" until Terminal 2 is running.
 
 ## What you'll see, in order

@@ -1,4 +1,6 @@
 <!doctype html>
+<!-- Mirrored at frontend/public/live-attack-demo.html (served by the main app so it can be embedded as a
+     tab there) - keep both copies in sync if you edit one. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -60,6 +62,7 @@
 </head>
 <body>
   <span class="conn"><span class="dot" id="dot"></span><span id="connText">connecting…</span></span>
+  <a id="backLink" href="http://localhost:5173/" style="display:none;color:var(--muted);font-size:12px;text-decoration:none">← Back to NetGuard AI dashboard</a>
   <h1>NetGuard AI — Live Attack Detection</h1>
 
   <div id="banner" class="panel b-wait">
@@ -232,6 +235,12 @@ function connect() {
   };
 }
 connect();
+
+// Only show the "back" link when opened on its own (not embedded as a tab inside the main app).
+if (window.top === window.self) {
+  const back = document.getElementById("backLink");
+  if (back) back.style.display = "inline-block";
+}
 </script>
 </body>
 </html>

@@ -8,7 +8,7 @@ import { SEVERITY_TONE, TONE, condition, num, pct, toPoint } from "./lib";
 import type { AlertItem, LiveSession, ModelsResponse, MonitorRecord, RunInfo, Timeline } from "./types";
 
 type Mode = "replay" | "live";
-type Tab = "monitor" | "performance" | "space3d";
+type Tab = "monitor" | "performance" | "space3d" | "attack-demo";
 
 export default function App() {
   const [mode, setMode] = useState<Mode>("replay");
@@ -120,9 +120,9 @@ export default function App() {
             ))}
           </nav>
           <nav className="flex gap-1 text-sm">
-            {(["monitor", "performance", "space3d"] as Tab[]).map((t) => (
+            {(["monitor", "performance", "space3d", "attack-demo"] as Tab[]).map((t) => (
               <button key={t} onClick={() => setTab(t)} className={`rounded-md px-3 py-1 ${tab === t ? "bg-blue-600" : "text-slate-300 hover:text-white"}`}>
-                {t === "monitor" ? "Monitoring" : t === "performance" ? "Model performance" : "3D view"}
+                {t === "monitor" ? "Monitoring" : t === "performance" ? "Model performance" : t === "space3d" ? "3D view" : "Live attack demo"}
               </button>
             ))}
           </nav>
@@ -142,6 +142,20 @@ export default function App() {
         {tab === "performance" && <ModelPerformance models={models} />}
 
         {tab === "space3d" && <Space3D />}
+
+        {tab === "attack-demo" && (
+          <Card
+            title="Live attack demo"
+            subtitle="Attack a sample website hosted inside the test network, and watch it get detected - see docs/DEMO_GUIDE.md"
+            right={<a href="/live-attack-demo.html" target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline">open in a new tab ↗</a>}
+          >
+            <iframe
+              src="/live-attack-demo.html"
+              title="Live attack demo"
+              className="h-[80vh] w-full rounded-xl border border-slate-200"
+            />
+          </Card>
+        )}
 
         {tab === "monitor" && (
           <>
